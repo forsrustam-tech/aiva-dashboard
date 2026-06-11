@@ -291,7 +291,7 @@ const roleViews = {
   sales:['rnp','home','sales','knowledge','settings'],
   clinic:['rnp','home','clinic','doctors','knowledge','settings'],
   finance:['rnp','home','finance','knowledge','settings'],
-  approver:['rnp','home','finance','knowledge','settings'],
+  approver:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
   viewer:['rnp','home','knowledge','settings']
 };
 function activeUser(){
@@ -311,7 +311,7 @@ function canView(view){
 }
 function canEdit(area){
   const role = activeUser().role || 'viewer';
-  if(['owner','manager'].includes(role)) return true;
+  if(['owner','manager','approver'].includes(role)) return true;
   if(area==='marketing') return role==='marketing';
   if(area==='sales') return role==='sales';
   if(area==='doctors') return role==='clinic';
@@ -330,7 +330,7 @@ function canSeeProfit(){
 
   // Чистая прибыль доступна только роли Владимира.
   // На практике это роль approver. Дополнительно подстраховка по имени/email.
-  return role === 'approver' || name.includes('владимир') || email.includes('vladimir');
+  return role === 'owner' || role === 'approver' || name.includes('владимир') || email.includes('vladimir');
 }
 function protectedMoney(value){
   return canSeeProfit() ? money(value) : 'Скрыто';
@@ -346,7 +346,7 @@ function canSeeExpenses(){
   const email = String(user.email || '').toLowerCase();
 
   // План расходов и финансовые расходы видят только Владимир/approver и финансовая роль.
-  return role === 'approver' || role === 'finance' || name.includes('владимир') || email.includes('vladimir');
+  return role === 'owner' || role === 'approver' || role === 'finance' || name.includes('владимир') || email.includes('vladimir');
 }
 function protectedExpenseMoney(value){
   return canSeeExpenses() ? money(value) : 'Скрыто';
@@ -688,6 +688,7 @@ function showView(view){
   const el=document.getElementById('view-'+view); if(el) el.classList.add('active');
   const titles={rnp:'РНП — сводный экран',home:'Главная',plans:'Планы месяца',marketing:'Маркетинг — таблица по дням',sales:'Продажи — чек-апы / диагностики',clinic:'Клиника — из врачей',doctors:'Врачи — основной ввод клиники',finance:'Финансы',knowledge:'База знаний',users:'Сотрудники',settings:'Настройки'};
   document.getElementById('pageTitle').textContent=titles[view]||titles.rnp;
+  toggleMobileMenu(false);
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -845,8 +846,18 @@ function currentAreaByView(){
   return 'view';
 }
 
+function toggleMobileMenu(force){
+  const app = document.getElementById('appRoot');
+  if(!app) return;
+  const shouldOpen = typeof force === 'boolean' ? force : !app.classList.contains('menu-open');
+  app.classList.toggle('menu-open', shouldOpen);
+  document.body.classList.toggle('menu-open', shouldOpen);
+}
+
 function bind(){
   document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
+  document.getElementById('mobileMenuBtn')?.addEventListener('click',()=>toggleMobileMenu());
+  document.getElementById('sidebarBackdrop')?.addEventListener('click',()=>toggleMobileMenu(false));
   document.getElementById('monthSelect').addEventListener('change',e=>{
     const key=e.target.value;
     tempFilters.start=monthStart(key);
@@ -884,6 +895,7 @@ function bind(){
   document.getElementById('directionFilter').addEventListener('change',e=>tempFilters.direction=e.target.value);
   document.getElementById('applyPeriod').addEventListener('click',()=>{state.filters.start=tempFilters.start;state.filters.end=tempFilters.end;state.filters.direction=tempFilters.direction;save(false);renderAll();toast('Период применён');});
   document.getElementById('todayBtn').addEventListener('click',()=>{const d=todayIso();tempFilters={start:d,end:d,entryDate:d,direction:tempFilters.direction};state.filters={...tempFilters};save(false);renderAll();toast('Сегодня');});
+  window.addEventListener('resize',()=>{ if(window.innerWidth > 980) toggleMobileMenu(false); });
   document.getElementById('resetPlansDemo').addEventListener('click',()=>{if(!canEdit('plans')){toast('Нет прав на планы');return;} const fresh=buildDefault();activePlanPack().directionPlans=fresh.directionPlans;activePlanPack().salesPlans=fresh.salesPlans;activePlanPack().financePlans=fresh.financePlans;save();renderAll();});
   document.getElementById('addDirectionPlan').addEventListener('click',()=>{
     if(!canEdit('plans')){toast('Нет прав на планы');return;}
