@@ -1,0 +1,87 @@
+# AIVA Clinic Dashboard v9 Site-ready
+
+Эта версия подготовлена для сайта:
+
+- Vercel — хостинг сайта
+- Supabase Auth — вход по email/паролю
+- Supabase Database — сохранение данных
+- Supabase RLS — роли и ограничения доступа
+- Supabase Storage — будущая база знаний с файлами
+
+## Файлы
+
+- `index.html` — сайт
+- `style.css` — дизайн
+- `app.js` — логика
+- `config.js` — ключи Supabase
+- `supabase-schema.sql` — SQL для Supabase
+- `assets/` — лого
+
+## Быстрый запуск локально без Supabase
+
+Открой `index.html`. Если в `config.js` стоит `ENABLED: false`, дашборд работает локально как v8.
+
+## Подключение Supabase
+
+1. Supabase → SQL Editor → New query.
+2. Вставить весь код из `supabase-schema.sql`.
+3. Нажать Run.
+4. Supabase → Authentication → Users → Add user.
+5. Создать пользователя для себя.
+6. Supabase → Table Editor → profiles → поставить себе роль `owner`.
+7. Supabase → Integrations → Data API → скопировать API URL.
+8. Supabase → Project Settings → API Keys → скопировать Publishable/anon key.
+9. Открыть `config.js`.
+10. Поставить:
+
+```js
+window.AIVA_CONFIG = {
+  ENABLED: true,
+  SUPABASE_URL: "https://project.supabase.co",
+  SUPABASE_ANON_KEY: "your_key"
+};
+```
+
+## Загрузка на Vercel
+
+1. Создать GitHub репозиторий.
+2. Загрузить все файлы.
+3. Vercel → Add New → Project.
+4. Выбрать репозиторий.
+5. Deploy.
+
+## Важно
+
+В v9 для быстрого запуска данные дашборда сохраняются в таблице `dashboard_state` как JSON.
+Это нормально для MVP. Когда структура окончательно утвердится, можно перейти на нормализованные таблицы:
+`monthly_plans`, `daily_metrics`, `payments`, `knowledge_docs`.
+
+
+## v9.2 fix
+Если `dashboard_state.data` в Supabase пустой `{}`, дашборд автоматически создаёт стартовую структуру и сохраняет её в Supabase.
+
+
+## v9.3 privacy update
+
+- Чистая прибыль скрыта для всех ролей, кроме `approver`.
+- ROMI тоже скрыт для всех ролей, кроме `approver`, потому что по нему можно косвенно посчитать прибыль.
+- Для Владимира в `profiles.role` нужно поставить `approver`.
+
+
+## v9.4 update
+
+- В разделе "Планы" добавлены кнопки:
+  - + Направление
+  - + Менеджер
+  - + Статья
+- Новые планы сохраняются в Supabase.
+- Кастомные направления подтягиваются в фильтр и маркетинговые таблицы.
+
+
+## v9.5 privacy update
+
+- План расходов скрыт для всех, кроме ролей `approver` и `finance`.
+- Раздел "Финансы" скрыт для остальных ролей.
+- В РНП строка "Финансы расходы" не показывает суммы и проценты тем, у кого нет финансового доступа.
+- Для Владимира поставь `role = approver`.
+- Для других лиц с доступом к расходам поставь `role = finance`.

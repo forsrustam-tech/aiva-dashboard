@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AIVA Clinic — Dashboard v7</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="auth-screen" id="authScreen" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo">AIVA</div>
+    <h1>Вход в дашборд</h1>
+    <p>Введите email и пароль. В боевом режиме вход идёт через Supabase Auth.</p>
+    <label>Email<input id="loginEmail" type="email" placeholder="name@aiva.kz"></label>
+    <label>Пароль<input id="loginPassword" type="password" placeholder="••••••••"></label>
+    <button type="button" id="loginBtn" class="btn">Войти</button>
+    <div class="auth-error" id="authError"></div>
+    <small class="auth-hint">Если вход не нужен — в config.js можно выключить Supabase режим.</small>
+  </div>
+</div>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="assets/aiva-logo.jpg" alt="AIVA Clinic">
+      <div>
+        <h1>AIVA Clinic</h1>
+        <p>Executive Dashboard</p>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button type="button" class="nav-btn active" data-view="rnp"><span>✳</span>РНП</button>
+      <button type="button" class="nav-btn" data-view="home"><span>⌂</span>Главная</button>
+      <button type="button" class="nav-btn" data-view="plans"><span>◫</span>Планы</button>
+      <button type="button" class="nav-btn" data-view="marketing"><span>◎</span>Маркетинг</button>
+      <button type="button" class="nav-btn" data-view="sales"><span>↗</span>Продажи</button>
+      <button type="button" class="nav-btn" data-view="clinic"><span>☤</span>Клиника</button>
+      <button type="button" class="nav-btn" data-view="doctors"><span>⚕</span>Врачи</button>
+      <button type="button" class="nav-btn" data-view="finance" data-sensitive="finance"><span>₸</span>Финансы</button>
+      <button type="button" class="nav-btn" data-view="knowledge"><span>✦</span>База знаний</button>
+      <button type="button" class="nav-btn" data-view="users"><span>◉</span>Сотрудники</button>
+      <button type="button" class="nav-btn" data-view="settings"><span>⚙</span>Настройки</button>
+    </nav>
+
+    <button type="button" class="kb-mini" data-view="knowledge">
+      <span>✦</span>
+      <div><b>База знаний</b><small>Регламенты и протоколы</small></div>
+    </button>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="title-block">
+        <small>AIVA Clinic · Астана · управленческий контур</small>
+        <h2 id="pageTitle">РНП — сводный экран</h2>
+      </div>
+      <div class="controls">
+        <label><span>Месяц</span><input id="monthSelect" type="month"></label>
+        <button type="button" id="applyMonth" class="btn ghost">Открыть месяц</button>
+        <label><span>С</span><input id="startDate" type="date"></label>
+        <label><span>По</span><input id="endDate" type="date"></label>
+        <button type="button" id="applyPeriod" class="btn ghost">Применить</button>
+        <label><span>Дата ввода</span><input id="entryDate" type="date"></label>
+        <label><span>Направление</span><select id="directionFilter"></select></label>
+        <button type="button" id="todayBtn" class="btn soft">Сегодня</button>
+        <div class="user">
+          <div class="avatar" id="activeAvatar">РШ</div>
+          <div>
+            <b id="activeUserName">Рус</b>
+            <small id="activeUserRole">Директор маркетинга</small>
+            <select id="activeUserSelect" class="user-select"></select>
+            <button type="button" id="logoutBtn" class="logout-mini">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="view active" id="view-rnp">
+      <div class="kpis" id="rnpKpis"></div>
+
+      <div class="grid main-grid">
+        <article class="card card-wide">
+          <div class="card-head"><h3>РНП — план / факт</h3><small>Автоматически из отделов и планов месяца</small></div>
+          <div class="table-wrap"><table class="clean-table">
+            <thead><tr><th>Блок</th><th>План</th><th>Факт</th><th>%</th><th>Ответственный</th><th>Источник</th><th>Статус</th></tr></thead>
+            <tbody id="rnpTable"></tbody>
+          </table></div>
+        </article>
+
+        <article class="card">
+          <div class="card-head"><h3>Воронка ОП</h3><small>С чек-апами и диагностиками</small></div>
+          <div class="funnel" id="funnel"></div>
+        </article>
+
+        <article class="card">
+          <div class="card-head"><h3>Продажи клиники</h3><small>Из врачей, не вручную</small></div>
+          <div class="bars" id="clinicSalesAnalytics"></div>
+        </article>
+
+        <article class="card">
+          <div class="card-head"><h3>Маркетинг</h3><small>По направлениям</small></div>
+          <div class="table-wrap"><table class="clean-table compact">
+            <thead><tr><th>Направление</th><th>План</th><th>Факт</th><th>Показы</th><th>Клики</th><th>Лиды</th><th>CPL</th></tr></thead>
+            <tbody id="marketingSummaryRnp"></tbody>
+          </table></div>
+        </article>
+
+        <article class="card">
+          <div class="card-head"><h3>Врачи</h3><small>Топ по выручке</small></div>
+          <div class="doctor-list" id="topDoctors"></div>
+        </article>
+
+        <article class="card">
+          <div class="card-head"><h3>Финансы</h3><small>Расходы</small></div>
+          <div class="finance-box">
+            <div class="donut" id="financeDonut"></div>
+            <div class="legend" id="financeLegend"></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="view-home">
+      <div class="hero">
+        <div>
+          <small>AIVA Clinic Control System</small>
+          <h3>Планы → заполнение → РНП</h3>
+          <p>Каждый новый месяц сначала открывается в дашборде, проставляются планы. Далее маркетинг, продажи и врачи заполняют свои таблицы по дням. Клиника и РНП собираются автоматически.</p>
+        </div>
+        <div class="hero-stats" id="homeStats"></div>
+      </div>
+      <div class="info-grid">
+        <div class="info"><h4>Клиника из врачей</h4><p>Приёмы, продажи, доплаты и выручка врачей автоматически собираются в клинику.</p></div>
+        <div class="info"><h4>Продажи ОП</h4><p>В ОП теперь отдельно считаются чек-апы и диагностики.</p></div>
+        <div class="info"><h4>Единые планы</h4><p>Планируется не только ОП, а весь контур: маркетинг, продажи, клиника, врачи и финансы.</p></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-plans">
+      <div class="section-head">
+        <div><small>Планы месяца</small><h3>Единый план — маркетинг, продажи, клиника, врачи, финансы</h3></div>
+        <button type="button" id="resetPlansDemo" class="btn ghost">Заполнить пример</button>
+      </div>
+      <div class="kpis small" id="plansKpis"></div>
+
+      <article class="card">
+        <div class="card-head"><h3>Планы по направлениям</h3><div><small>От этих цифр потом считается РНП</small> <button type="button" id="addDirectionPlan" class="secondary">+ Направление</button></div></div>
+        <div class="table-wrap"><table class="clean-table editable" id="directionPlansTable">
+          <thead><tr><th>Направление</th><th>Маркетинг бюджет</th><th>Показы</th><th>Клики</th><th>Лиды</th><th>Дошедшие</th><th>Продажи клиники</th><th>Выручка</th><th>Комментарий</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </article>
+
+      <article class="card mt">
+        <div class="card-head"><h3>План отдела продаж</h3><div><small>Чек-апы и диагностики отдельно</small> <button type="button" id="addSalesPlanRow" class="secondary">+ Менеджер</button></div></div>
+        <div class="table-wrap"><table class="clean-table editable" id="salesPlansTable">
+          <thead><tr><th>Менеджер</th><th>Лиды</th><th>Дозвон</th><th>Записи</th><th>Чек-апы</th><th>Диагностики</th><th>Выручка</th><th>Комментарий</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </article>
+
+      <article class="card mt" id="financePlanCard">
+        <div class="card-head"><h3>План финансов</h3><div><small>Планируемые расходы</small> <button type="button" id="addFinancePlanRow" class="secondary">+ Статья</button></div></div>
+        <div class="table-wrap"><table class="clean-table editable" id="financePlansTable">
+          <thead><tr><th>Статья</th><th>План расхода</th><th>Комментарий</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-marketing">
+      <div class="section-head">
+        <div><small>Ввод по дням</small><h3>Маркетинг — таблица по направлениям</h3></div>
+      </div>
+      <div class="kpis small" id="marketingKpis"></div>
+      <article class="card">
+        <div class="card-head">
+          <h3>Ежедневный ввод</h3>
+          <small>Направление + маркетинговый показатель. Колонки — дни выбранного периода.</small>
+        </div>
+        <div class="matrix-note">Маркетинг заполняет только маркетинговые показатели: бюджет, показы, клики и лиды. Без ОП и записей.</div>
+        <div class="matrix-wrap" id="marketingMatrix"></div>
+      </article>
+      <article class="card mt">
+        <div class="card-head"><h3>Сводка маркетинга</h3></div>
+        <div class="table-wrap"><table class="clean-table">
+          <thead><tr><th>Направление</th><th>План бюджет</th><th>Факт бюджет</th><th>Показы</th><th>Клики</th><th>Лиды</th><th>CPL</th><th>CTR</th><th>CPC</th><th>Выполнение</th></tr></thead>
+          <tbody id="marketingSummary"></tbody>
+        </table></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-sales">
+      <div class="section-head">
+        <div><small>Ввод по дням · Мадина РОП / МОП</small><h3>Продажи — чек-апы и диагностики отдельно</h3></div>
+      </div>
+      <div class="kpis small" id="salesKpis"></div>
+      <article class="card">
+        <div class="card-head">
+          <h3>Ежедневный ввод отдела продаж</h3>
+          <small>Менеджер + показатель. Дни идут колонками.</small>
+        </div>
+        <div class="matrix-note">ОП заполняет лиды, дозвон, записи, продажи чек-апов, продажи диагностик и выручку.</div>
+        <div class="matrix-wrap" id="salesMatrix"></div>
+      </article>
+      <article class="card mt">
+        <div class="card-head"><h3>Сводка по менеджерам</h3></div>
+        <div class="table-wrap"><table class="clean-table compact">
+          <thead><tr><th>Менеджер</th><th>Лиды</th><th>Дозвон</th><th>Записи</th><th>Чек-апы</th><th>Диагностики</th><th>Всего продаж</th><th>Выручка</th></tr></thead>
+          <tbody id="salesSummary"></tbody>
+        </table></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-clinic">
+      <div class="section-head">
+        <div><small>Автоматически из врачей</small><h3>Клиника — аналитика продаж и доходимости</h3></div>
+      </div>
+      <div class="kpis small" id="clinicKpis"></div>
+      <article class="card">
+        <div class="card-head"><h3>Клиника по направлениям</h3><small>Собирается из таблицы врачей</small></div>
+        <div class="table-wrap"><table class="clean-table">
+          <thead><tr><th>Направление</th><th>План продаж</th><th>Факт продаж</th><th>План выручки</th><th>Факт выручки</th><th>Приёмы</th><th>Доплаты</th><th>Выполнение</th></tr></thead>
+          <tbody id="clinicAutoTable"></tbody>
+        </table></div>
+      </article>
+      <article class="card mt">
+        <div class="card-head"><h3>Продажи клиники</h3><small>План / факт</small></div>
+        <div class="bars" id="clinicBars"></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-doctors">
+      <div class="section-head">
+        <div><small>Врачи AIVA · Астана</small><h3>Врачи — основной ввод клиники</h3></div>
+      </div>
+      <article class="card">
+        <div class="card-head"><h3>Таблица врачей</h3><small>Эти данные автоматически уходят в клинику и РНП</small></div>
+        <div class="matrix-note">Координатор заполняет врачей. Отдельную таблицу клиники больше руками дублировать не нужно.</div>
+        <div class="matrix-wrap" id="doctorsMatrix"></div>
+      </article>
+      <article class="card mt">
+        <div class="card-head"><h3>Сводка врачей</h3></div>
+        <div class="table-wrap"><table class="clean-table compact">
+          <thead><tr><th>Врач</th><th>Направление</th><th>Приёмы</th><th>Продажи</th><th>Доплаты</th><th>Выручка</th><th>Конв.</th></tr></thead>
+          <tbody id="doctorsSummary"></tbody>
+        </table></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-finance">
+      <div class="section-head">
+        <div><small>Платежи и подтверждение</small><h3>Финансы — заявки Владимиру</h3></div>
+        <button type="button" id="addPayment" class="btn">+ Добавить платёж</button>
+      </div>
+      <div class="kpis small" id="financeKpis"></div>
+      <article class="card">
+        <div class="table-wrap"><table class="clean-table editable" id="financeTable">
+          <thead><tr><th>Дата</th><th>Инициатор</th><th>Статья</th><th>Назначение</th><th>Сумма</th><th>Статус</th><th>Владимир</th><th>Комментарий</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-knowledge">
+      <div class="section-head">
+        <div><small>Внутренняя база знаний</small><h3>База знаний — документы Айвы</h3></div>
+      </div>
+      <div class="two-col">
+        <article class="card">
+          <div class="card-head"><h3>Загрузить документ</h3></div>
+          <div class="form">
+            <label>Название<input id="kbTitle" placeholder="Например: Регламент работы админов"></label>
+            <label>Категория<select id="kbCategory"><option>Регламент</option><option>Протокол</option><option>Скрипт</option><option>Инструкция</option><option>Договор</option><option>Другое</option></select></label>
+            <label>Описание<textarea id="kbDescription" rows="4" placeholder="Кратко: что внутри и для кого"></textarea></label>
+            <label>Файл<input id="kbFile" type="file"></label>
+            <button type="button" id="uploadKb" class="btn">Загрузить</button>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card-head"><h3>Документы</h3></div>
+          <div id="kbList" class="kb-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="view-users">
+      <div class="section-head">
+        <div><small>Роли и доступы</small><h3>Сотрудники</h3></div>
+      </div>
+      <div class="two-col">
+        <article class="card">
+          <div class="card-head"><h3>Добавить сотрудника</h3></div>
+          <div class="form">
+            <label>Имя<input id="userName" placeholder="Например: Мадина"></label>
+            <label>Email<input id="userEmail" placeholder="name@aiva.kz"></label>
+            <label>Роль<select id="userRole"><option value="owner">owner</option><option value="manager">manager</option><option value="marketing">marketing</option><option value="sales">sales</option><option value="clinic">clinic</option><option value="finance">finance</option><option value="approver">approver</option><option value="viewer">viewer</option></select></label>
+            <button type="button" id="addUser" class="btn">Добавить</button>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card-head"><h3>Список</h3></div>
+          <div class="user-list" id="usersList"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="view-settings">
+      <div class="section-head">
+        <div><small>Версия 7</small><h3>Что изменено</h3></div>
+      </div>
+      <div class="info-grid">
+        <div class="info"><h4>Клиника без дубля</h4><p>Клиника собирается из врачей. Не надо заполнять одну и ту же цифру в двух местах.</p></div>
+        <div class="info"><h4>ОП разделён</h4><p>Продажи теперь разделены на чек-апы и диагностики.</p></div>
+        <div class="info"><h4>Планы всего контура</h4><p>План месяца теперь общий: маркетинг, продажи, клиника, направления, финансы.</p></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast">Сохранено</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
