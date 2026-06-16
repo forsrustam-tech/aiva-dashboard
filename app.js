@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v9_2_site';
+const STORAGE_KEY = 'aiva_dashboard_v9_8_site';
 const CLOUD_STATE_ID = 'main';
 let supabaseClient = null;
 let cloudEnabled = false;
@@ -10,7 +10,8 @@ const directionsPure = directions.filter(x => x !== 'Все направлени
 function customDirectionsPure(){
   const planKeys = (typeof directionPlans === 'function' && state?.planMonths) ? Object.keys(directionPlans()) : [];
   const marketingKeys = state?.marketing ? Object.keys(state.marketing) : [];
-  return [...new Set([...directionsPure, ...planKeys, ...marketingKeys])];
+  const doctorKeys = state?.doctorAssignments ? state.doctorAssignments.map(x=>x.direction) : [];
+  return [...new Set([...directionsPure, ...planKeys, ...marketingKeys, ...doctorKeys])];
 }
 function customDirections(){
   return ['Все направления', ...customDirectionsPure()];
@@ -48,6 +49,8 @@ const dMetrics = [
 ];
 
 function uid(){ return 'id-' + Math.random().toString(36).slice(2,10); }
+function slug(s){ return String(s||'').trim().toLowerCase().replace(/[^а-яa-z0-9]+/gi,'-').replace(/^-|-$/g,''); }
+function doctorKey(name, direction){ return slug(name) + '__' + slug(direction); }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function todayIso(){ return new Date().toISOString().slice(0,10); }
 function monthKeyFromDate(date){ return String(date || todayIso()).slice(0,7); }
@@ -144,11 +147,20 @@ function buildDefault(){
     });
   });
 
+  data.doctorAssignments = [];
   doctorsList.forEach(doc => {
-    data.doctors[doc.name] = {direction:doc.direction, dates:{}};
-    days.forEach(date => data.doctors[doc.name].dates[date] = {appointments:0,sales:0,upsells:0,revenue:0});
+    const key = doctorKey(doc.name, doc.direction);
+    data.doctorAssignments.push({id:key, name:doc.name, direction:doc.direction, comment:''});
+    data.doctors[key] = {name:doc.name, direction:doc.direction, dates:{}};
+    days.forEach(date => data.doctors[key].dates[date] = {appointments:0,sales:0,upsells:0,revenue:0});
   });
-  const dr = (name,date,appointments,sales,upsells,revenue) => data.doctors[name].dates[date] = {appointments,sales,upsells,revenue};
+  const dr = (name,date,appointments,sales,upsells,revenue) => {
+    const doc = doctorsList.find(d=>d.name===name);
+    const direction = doc?.direction || 'Терапия';
+    const key = doctorKey(name, direction);
+    if(!data.doctors[key]) data.doctors[key] = {name,direction,dates:{}};
+    data.doctors[key].dates[date] = {appointments,sales,upsells,revenue};
+  };
   dr('Ермек Тусупбеков','2026-06-01',2,1,1,319000);
   dr('Куандык Сембаев','2026-06-01',5,0,0,130500);
   dr('Элона Потапова','2026-06-02',3,2,1,557275);
@@ -200,6 +212,7 @@ function migrateState(s){
   if(!s.marketing || !Object.keys(s.marketing).length) s.marketing = clone(fresh.marketing);
   if(!s.sales || !Object.keys(s.sales).length) s.sales = clone(fresh.sales);
   if(!s.doctors || !Object.keys(s.doctors).length) s.doctors = clone(fresh.doctors);
+  normalizeDoctorsState(s);
   if(!s.financeRows || !Array.isArray(s.financeRows)) s.financeRows = clone(fresh.financeRows);
   if(!s.knowledgeDocs || !Array.isArray(s.knowledgeDocs)) s.knowledgeDocs = clone(fresh.knowledgeDocs);
 
@@ -216,6 +229,35 @@ function migrateState(s){
     };
   }
 }
+function normalizeDoctorsState(s){
+  const fresh = buildDefault();
+  if(!s.doctorAssignments || !Array.isArray(s.doctorAssignments)) s.doctorAssignments = [];
+  const normalized = {};
+  const assignments = [];
+  Object.entries(s.doctors || {}).forEach(([key, doc])=>{
+    const name = doc.name || key;
+    const direction = doc.direction || 'Терапия';
+    const newKey = doctorKey(name, direction);
+    normalized[newKey] = {name, direction, dates: doc.dates || {}};
+    assignments.push({id:newKey, name, direction, comment: doc.comment || ''});
+  });
+  if(!Object.keys(normalized).length){
+    Object.assign(normalized, clone(fresh.doctors));
+    assignments.push(...clone(fresh.doctorAssignments || []));
+  }
+  s.doctors = normalized;
+  const seen = new Set();
+  s.doctorAssignments = [...assignments, ...(s.doctorAssignments || [])]
+    .filter(a=>a && a.name && a.direction)
+    .map(a=>({id:doctorKey(a.name,a.direction), name:a.name, direction:a.direction, comment:a.comment || ''}))
+    .filter(a=>{
+      if(seen.has(a.id)) return false;
+      seen.add(a.id);
+      if(!s.doctors[a.id]) s.doctors[a.id] = {name:a.name,direction:a.direction,dates:{}};
+      return true;
+    });
+}
+
 function activePlanPack(){
   const key = currentMonthKey();
   if(!state.planMonths) state.planMonths = {};
@@ -296,11 +338,13 @@ const roleViews = {
 };
 function activeUser(){
   if(cloudEnabled && cloudProfile){
+    const localUser = state.users?.find(u=>u.id===cloudUser?.id || u.email===cloudUser?.email) || {};
     return {
       id: cloudUser?.id,
-      name: cloudProfile.name || cloudProfile.email || cloudUser?.email || 'Пользователь',
+      name: cloudProfile.name || localUser.name || cloudProfile.email || cloudUser?.email || 'Пользователь',
       email: cloudProfile.email || cloudUser?.email || '',
-      role: cloudProfile.role || 'viewer'
+      role: cloudProfile.role || localUser.role || 'viewer',
+      assignedTo: localUser.assignedTo || localUser.assigned_to || ''
     };
   }
   return state.users.find(u=>u.id===state.currentUserId) || state.users[0] || {name:'Гость',role:'viewer',email:''};
@@ -320,6 +364,31 @@ function canEdit(area){
   if(area==='users') return false;
   if(area==='knowledge') return role!=='viewer';
   return false;
+}
+
+function normName(s){ return String(s||'').trim().toLowerCase(); }
+function activeAssignedTo(){
+  const u = activeUser();
+  return normName(u.assignedTo || u.assigned_to || u.name || u.email?.split('@')[0] || '');
+}
+function entityAllowedForUser(section, entity){
+  const role = activeUser().role || 'viewer';
+  if(['owner','manager','approver'].includes(role)) return true;
+  const assigned = activeAssignedTo();
+  if(section === 'sales' && role === 'sales'){
+    return normName(entity) === assigned || normName(entity).includes(assigned) || assigned.includes(normName(entity));
+  }
+  if(section === 'doctors' && role === 'clinic'){
+    const doc = state.doctors?.[entity];
+    const name = normName(doc?.name || entity);
+    return !assigned || name === assigned || name.includes(assigned) || assigned.includes(name);
+  }
+  if(section === 'marketing' && role === 'marketing') return true;
+  if(section === 'finance' && (role === 'finance' || role === 'approver')) return true;
+  return false;
+}
+function canEditEntity(section, entity){
+  return canEdit(section) && entityAllowedForUser(section, entity);
 }
 
 function canSeeProfit(){
@@ -364,7 +433,8 @@ function setValue(section,entity,date,metric,value){
     : section==='sales' ? {leads:0,calls:0,appointments:0,checkups:0,diagnostics:0,revenue:0}
     : {appointments:0,sales:0,upsells:0,revenue:0};
   if(section==='doctors'){
-    if(!state.doctors[entity]) state.doctors[entity]={direction:'',dates:{}};
+    const assignment = state.doctorAssignments?.find(a=>a.id===entity);
+    if(!state.doctors[entity]) state.doctors[entity]={name:assignment?.name || entity,direction:assignment?.direction || '',dates:{}};
     if(!state.doctors[entity].dates[date]) state.doctors[entity].dates[date]={...defaults};
     state.doctors[entity].dates[date][metric]=value;
   } else {
@@ -417,10 +487,11 @@ function salesSummary(){
   });
 }
 function doctorSummary(){
-  const names=Object.keys(state.doctors).filter(name=>isDirectionVisible(state.doctors[name].direction));
-  return names.map(name=>{
-    const s=sumObj('doctors',[name],dMetrics);
-    return {name,direction:state.doctors[name].direction,...s,conversion:pct(s.sales,s.appointments)};
+  const keys=Object.keys(state.doctors || {}).filter(key=>isDirectionVisible(state.doctors[key].direction));
+  return keys.map(key=>{
+    const doc = state.doctors[key];
+    const s=sumObj('doctors',[key],dMetrics);
+    return {key,name:doc.name || key,direction:doc.direction,...s,conversion:pct(s.sales,s.appointments)};
   }).sort((a,b)=>b.revenue-a.revenue);
 }
 function clinicAutoSummary(){
@@ -623,8 +694,19 @@ function renderClinic(){
   renderClinicSalesAnalytics('clinicBars');
 }
 function renderDoctors(){
-  const names=Object.keys(state.doctors).filter(n=>isDirectionVisible(state.doctors[n].direction));
-  document.getElementById('doctorsMatrix').innerHTML=matrixHtml('doctors',names,dMetrics,{header:'Врач',name:x=>x});
+  normalizeDoctorsState(state);
+  const assignments = state.doctorAssignments.filter(a=>isDirectionVisible(a.direction));
+  const keys = assignments.map(a=>a.id);
+  document.querySelector('#doctorAssignmentsTable tbody').innerHTML = state.doctorAssignments.map(a=>`<tr data-doctor-assignment="${a.id}">
+    <td><input class="doctor-assignment" data-key="name" value="${a.name}"></td>
+    <td><input class="doctor-assignment" data-key="direction" value="${a.direction}"></td>
+    <td><input class="doctor-assignment" data-key="comment" value="${a.comment||''}" placeholder="Например: печень / похудение"></td>
+    <td><button class="delete doctor-assignment-delete" type="button">×</button></td>
+  </tr>`).join('');
+  document.getElementById('doctorsMatrix').innerHTML=matrixHtml('doctors',keys,dMetrics,{header:'Врач / направление',name:key=>{
+    const d=state.doctors[key] || {};
+    return `<span class="assignment-name"><b>${d.name || key}</b><small>${d.direction || ''}</small></span>`;
+  }});
   document.getElementById('doctorsSummary').innerHTML=doctorSummary().map(d=>`<tr><td>${d.name}</td><td>${d.direction}</td><td>${fmt(d.appointments)}</td><td>${fmt(d.sales)}</td><td>${fmt(d.upsells)}</td><td>${money(d.revenue)}</td><td>${d.conversion}%</td></tr>`).join('');
 }
 function renderFinance(){
@@ -651,7 +733,7 @@ function renderKnowledge(){
   document.getElementById('kbList').innerHTML=state.knowledgeDocs.map(d=>`<div class="kb-item" data-id="${d.id}"><div><b>${d.title}</b><div class="kb-meta"><span class="pill">${d.category}</span><span class="pill">${d.fileName}</span></div><div class="muted">${d.description}</div></div><div><button class="secondary kb-open" type="button">Открыть</button> <button class="delete kb-delete" type="button">×</button></div></div>`).join('');
 }
 function renderUsers(){
-  document.getElementById('usersList').innerHTML=state.users.map(u=>`<div class="user-item" data-id="${u.id}"><div><b>${u.name}</b><div class="muted">${u.email}</div></div><span class="badge good">${u.role}</span><button class="delete user-delete" type="button">×</button></div>`).join('');
+  document.getElementById('usersList').innerHTML=state.users.map(u=>`<div class="user-item" data-id="${u.id}"><div><b>${u.name}</b><div class="muted">${u.email}${u.assignedTo ? ' · доступ: '+u.assignedTo : ''}</div></div><span class="badge good">${u.role}</span><button class="delete user-delete" type="button">×</button></div>`).join('');
 }
 function renderControls(){
   document.getElementById('monthSelect').value=monthKeyFromDate(tempFilters.start);
@@ -918,12 +1000,27 @@ function bind(){
     financePlans().push({id:uid(),category:'Новая статья',amountPlan:0,comment:''});
     save(); renderAll();
   });
+  document.getElementById('addDoctorDirection').addEventListener('click',()=>{
+    if(!canEdit('doctors')){toast('Нет прав на врачей');return;}
+    const name = prompt('ФИО врача');
+    if(!name) return;
+    const direction = prompt('Направление врача');
+    if(!direction) return;
+    const key = doctorKey(name, direction);
+    if(state.doctors[key]){toast('Такая привязка уже есть');return;}
+    state.doctorAssignments.push({id:key,name:name.trim(),direction:direction.trim(),comment:''});
+    state.doctors[key] = {name:name.trim(), direction:direction.trim(), dates:{}};
+    if(!directionPlans()[direction.trim()]){
+      directionPlans()[direction.trim()] = {marketingBudget:0,impressions:0,clicks:0,leads:0,came:0,clinicSales:0,revenue:0,comment:''};
+    }
+    save(); renderAll();
+  });
 
   document.addEventListener('change',e=>{
     const target=e.target;
     if(target.classList.contains('matrix-input')){
       const tr=target.closest('tr');
-      if(!canEdit(tr.dataset.section)){ toast('Нет прав на редактирование'); renderAll(); return; }
+      if(!canEditEntity(tr.dataset.section, tr.dataset.entity)){ toast('Нет прав на эту строку'); renderAll(); return; }
       setValue(tr.dataset.section,tr.dataset.entity,target.dataset.date,tr.dataset.metric,Number(target.value||0));
       save(false); renderAll();
     }
@@ -939,8 +1036,29 @@ function bind(){
       if(p){p[key]=target.type==='number'?Number(target.value||0):target.value; save(false); renderAll();}
     }
     if(target.classList.contains('finance-plan')){
-      const tr=target.closest('tr'), p=state.financePlans.find(x=>x.id===tr.dataset.financePlan), key=target.dataset.key;
+      if(!canEdit('plans') || !canSeeExpenses()){ toast('Нет доступа к плану расходов'); renderAll(); return; }
+      const tr=target.closest('tr'), p=financePlans().find(x=>x.id===tr.dataset.financePlan), key=target.dataset.key;
       if(p){p[key]=target.type==='number'?Number(target.value||0):target.value; save(false); renderAll();}
+    }
+    if(target.classList.contains('doctor-assignment')){
+      if(!canEdit('doctors')){ toast('Нет прав на врачей'); renderAll(); return; }
+      const tr=target.closest('tr'), oldId=tr.dataset.doctorAssignment, key=target.dataset.key;
+      const row=state.doctorAssignments.find(x=>x.id===oldId);
+      if(row){
+        row[key]=target.value;
+        const newId=doctorKey(row.name,row.direction);
+        if(newId!==oldId){
+          const oldDoc=state.doctors[oldId] || {dates:{}};
+          state.doctors[newId]={name:row.name,direction:row.direction,dates:oldDoc.dates||{}};
+          delete state.doctors[oldId];
+          row.id=newId;
+        }else if(state.doctors[oldId]){
+          state.doctors[oldId].name=row.name;
+          state.doctors[oldId].direction=row.direction;
+        }
+        if(!directionPlans()[row.direction]) directionPlans()[row.direction]={marketingBudget:0,impressions:0,clicks:0,leads:0,came:0,clinicSales:0,revenue:0,comment:''};
+        save(false); renderAll();
+      }
     }
     if(target.classList.contains('finance-field')){
       if(!canEdit('finance') || !canSeeExpenses()){ toast('Нет прав на финансы'); renderAll(); return; }
@@ -952,17 +1070,56 @@ function bind(){
     if(e.target.classList.contains('sales-plan-delete')){if(!canEdit('plans')){toast('Нет прав на планы');return;} activePlanPack().salesPlans=salesPlans().filter(x=>x.id!==e.target.closest('tr').dataset.salesPlan);save();renderAll();}
     if(e.target.classList.contains('finance-plan-delete')){if(!canEdit('plans')){toast('Нет прав на планы');return;} activePlanPack().financePlans=financePlans().filter(x=>x.id!==e.target.closest('tr').dataset.financePlan);save();renderAll();}
     if(e.target.classList.contains('finance-delete')){if(!canEdit('finance') || !canSeeExpenses()){toast('Нет прав на финансы');return;} state.financeRows=state.financeRows.filter(x=>x.id!==e.target.closest('tr').dataset.finance);save();renderAll();}
+    if(e.target.classList.contains('doctor-assignment-delete')){if(!canEdit('doctors')){toast('Нет прав на врачей');return;} const id=e.target.closest('tr').dataset.doctorAssignment; state.doctorAssignments=state.doctorAssignments.filter(x=>x.id!==id); delete state.doctors[id]; save();renderAll();}
     if(e.target.classList.contains('user-delete')){if(!canEdit('users')){toast('Нет прав на сотрудников');return;} state.users=state.users.filter(x=>x.id!==e.target.closest('.user-item').dataset.id);save();renderAll();}
     if(e.target.classList.contains('kb-delete')){if(!canEdit('knowledge')){toast('Нет прав на базу знаний');return;} const id=e.target.closest('.kb-item').dataset.id;state.knowledgeDocs=state.knowledgeDocs.filter(x=>x.id!==id);await delFile(id).catch(()=>{});save();renderAll();}
     if(e.target.classList.contains('kb-open')){const id=e.target.closest('.kb-item').dataset.id;const f=await getFile(id).catch(()=>null);if(!f)return alert('В демо сохранены только метаданные. Загрузи реальный файл заново.');const url=URL.createObjectURL(f);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),15000);}
   });
   document.getElementById('addPayment').addEventListener('click',()=>{if(!canEdit('finance') || !canSeeExpenses()){toast('Нет прав на финансы');return;} state.financeRows.push({id:uid(),date:state.filters.entryDate,initiator:'Рус',category:'Маркетинг',purpose:'',amount:0,status:'На согласовании',approved:false,comment:''});save();renderAll();});
-  document.getElementById('addUser').addEventListener('click',async()=>{if(!canEdit('users')){toast('Нет прав на сотрудников');return;} const name=document.getElementById('userName').value.trim(),email=document.getElementById('userEmail').value.trim(),role=document.getElementById('userRole').value;if(!name||!email)return alert('Заполни имя и email');if(cloudEnabled && supabaseClient){
-      alert('В боевом режиме сначала создай пользователя в Supabase → Authentication → Users. После первого входа он появится в profiles, а роль можно поменять в таблице profiles.');
-      return;
+  document.getElementById('addUser').addEventListener('click',async()=>{
+    if(!canEdit('users')){toast('Нет прав на сотрудников');return;}
+    const name=document.getElementById('userName').value.trim(),
+      email=document.getElementById('userEmail').value.trim(),
+      role=document.getElementById('userRole').value,
+      assignedTo=document.getElementById('userAssignedTo').value.trim();
+    if(!name||!email)return alert('Заполни имя и email');
+    let id = uid();
+    if(cloudEnabled && supabaseClient){
+      const { data:profile } = await supabaseClient.from('profiles').select('*').eq('email', email).maybeSingle();
+      if(profile?.id){
+        id = profile.id;
+        await supabaseClient.from('profiles').update({name, role}).eq('id', profile.id);
+      } else {
+        alert('Сотрудник сохранится в панели. Чтобы он мог войти на сайт, создай его ещё в Supabase → Authentication → Users с этой же почтой.');
+      }
     }
-    state.users.push({id:uid(),name,email,role});document.getElementById('userName').value='';document.getElementById('userEmail').value='';save();renderAll();});
-  document.getElementById('uploadKb').addEventListener('click',async()=>{if(!canEdit('knowledge')){toast('Нет прав на базу знаний');return;} const title=document.getElementById('kbTitle').value.trim(),category=document.getElementById('kbCategory').value,description=document.getElementById('kbDescription').value.trim(),file=document.getElementById('kbFile').files[0];if(!title)return alert('Укажи название');const id=uid();state.knowledgeDocs.push({id,title,category,description,fileName:file?file.name:'Без файла',createdAt:new Date().toISOString()});if(file)await putFile(id,file).catch(()=>{});document.getElementById('kbTitle').value='';document.getElementById('kbDescription').value='';document.getElementById('kbFile').value='';save();renderAll();});
+    const existingIndex = state.users.findIndex(u=>u.email===email || u.id===id);
+    const row = {id,name,email,role,assignedTo};
+    if(existingIndex>=0) state.users[existingIndex]=row;
+    else state.users.push(row);
+    document.getElementById('userName').value='';
+    document.getElementById('userEmail').value='';
+    document.getElementById('userAssignedTo').value='';
+    save();
+    renderAll();
+  });
+
+  document.getElementById('uploadKb').addEventListener('click',async()=>{
+    if(!canEdit('knowledge')){toast('Нет прав на базу знаний');return;}
+    const title=document.getElementById('kbTitle').value.trim(),
+      category=document.getElementById('kbCategory').value,
+      description=document.getElementById('kbDescription').value.trim(),
+      file=document.getElementById('kbFile').files[0];
+    if(!title)return alert('Укажи название');
+    const id=uid();
+    state.knowledgeDocs.push({id,title,category,description,fileName:file?file.name:'Без файла',createdAt:new Date().toISOString()});
+    if(file)await putFile(id,file).catch(()=>{});
+    document.getElementById('kbTitle').value='';
+    document.getElementById('kbDescription').value='';
+    document.getElementById('kbFile').value='';
+    save();
+    renderAll();
+  });
 }
 document.addEventListener('DOMContentLoaded',async()=>{
   await db().catch(()=>{});

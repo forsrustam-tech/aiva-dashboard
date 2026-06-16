@@ -245,8 +245,16 @@
     <section class="view" id="view-doctors">
       <div class="section-head">
         <div><small>Врачи AIVA · Астана</small><h3>Врачи — основной ввод клиники</h3></div>
+        <button type="button" id="addDoctorDirection" class="btn">+ Врач / направление</button>
       </div>
       <article class="card">
+        <div class="card-head"><h3>Привязка врачей к направлениям</h3><small>Один врач может работать в нескольких направлениях</small></div>
+        <div class="table-wrap"><table class="clean-table editable" id="doctorAssignmentsTable">
+          <thead><tr><th>Врач</th><th>Направление</th><th>Комментарий</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </article>
+      <article class="card mt">
         <div class="card-head"><h3>Таблица врачей</h3><small>Эти данные автоматически уходят в клинику и РНП</small></div>
         <div class="matrix-note">Координатор заполняет врачей. Отдельную таблицу клиники больше руками дублировать не нужно.</div>
         <div class="matrix-wrap" id="doctorsMatrix"></div>
@@ -307,6 +315,7 @@
             <label>Имя<input id="userName" placeholder="Например: Мадина"></label>
             <label>Email<input id="userEmail" placeholder="name@aiva.kz"></label>
             <label>Роль<select id="userRole"><option value="owner">owner</option><option value="manager">manager</option><option value="marketing">marketing</option><option value="sales">sales</option><option value="clinic">clinic</option><option value="finance">finance</option><option value="approver">approver</option><option value="viewer">viewer</option></select></label>
+            <label>Доступ к строке / врачу<input id="userAssignedTo" placeholder="Например: Мария или Асем Атыгаева"></label>
             <button type="button" id="addUser" class="btn">Добавить</button>
           </div>
         </article>

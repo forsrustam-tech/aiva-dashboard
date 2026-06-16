@@ -399,3 +399,7 @@ textarea{resize:vertical}
     visibility:visible;
   }
 }
+
+/* v9.8 assignments */
+.assignment-name{display:flex;flex-direction:column;gap:2px}
+.assignment-name small{color:var(--muted);font-size:10px;font-weight:800}
