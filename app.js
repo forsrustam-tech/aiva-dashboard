@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v11_8_safe_fix_site';
+const STORAGE_KEY = 'aiva_dashboard_v11_9_revenue_safe_site';
 const CLOUD_STATE_ID = 'main';
 const CITY_OPTIONS = [
   {key:'astana', label:'Астана'},
@@ -316,6 +316,7 @@ function migrateState(s){
   s.sales = safeObject(s.sales);
   s.doctors = safeObject(s.doctors);
   s.financeRows = safeArray(s.financeRows);
+  s.revenueRows = safeArray(s.revenueRows);
   s.users = safeArray(s.users);
   s.knowledgeDocs = safeArray(s.knowledgeDocs);
   s.planMonths = safeObject(s.planMonths);
@@ -345,6 +346,7 @@ function migrateState(s){
   if(!s.doctors || !Object.keys(s.doctors).length) s.doctors = clone(fresh.doctors);
   normalizeDoctorsState(s);
   if(!s.financeRows || !Array.isArray(s.financeRows) || !s.financeRows.length) s.financeRows = clone(fresh.financeRows);
+  if(!s.revenueRows || !Array.isArray(s.revenueRows) || !s.revenueRows.length) s.revenueRows = clone(fresh.revenueRows);
   if(!s.knowledgeDocs || !Array.isArray(s.knowledgeDocs)) s.knowledgeDocs = clone(fresh.knowledgeDocs);
 
   if(!s.users || !s.users.length) s.users = clone(fresh.users);
@@ -463,15 +465,15 @@ const roleNames = {
   viewer:'Только просмотр'
 };
 const roleViews = {
-  general_director:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
-  owner:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
-  approver:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
+  general_director:['rnp','home','plans','marketing','sales','clinic','doctors','revenue','finance','knowledge','users','settings'],
+  owner:['rnp','home','plans','marketing','sales','clinic','doctors','revenue','finance','knowledge','users','settings'],
+  approver:['rnp','home','plans','marketing','sales','clinic','doctors','revenue','finance','knowledge','users','settings'],
 
-  marketing_director:['rnp','home','plans','marketing','sales','clinic','doctors','knowledge','users','settings'],
-  manager:['rnp','home','plans','marketing','sales','clinic','doctors','knowledge','users','settings'],
+  marketing_director:['rnp','home','plans','marketing','sales','clinic','doctors','revenue','knowledge','users','settings'],
+  manager:['rnp','home','plans','marketing','sales','clinic','doctors','revenue','knowledge','users','settings'],
 
   sales_head:['rnp','home','plans','sales','knowledge','settings'],
-  center_coordinator:['rnp','home','clinic','doctors','finance','knowledge','settings'],
+  center_coordinator:['rnp','home','clinic','doctors','revenue','finance','knowledge','settings'],
   clinic_director:['rnp','home','finance','knowledge','settings'],
 
   marketing:['rnp','home','marketing','knowledge','settings'],
@@ -501,6 +503,7 @@ function canEdit(area){
   const role = activeUser().role || 'viewer';
 
   if(['general_director','owner','approver'].includes(role)) return true;
+  if(area==='revenue') return ['marketing_director','manager','center_coordinator'].includes(role);
   if(['marketing_director','manager'].includes(role)) return !['finance','financePlans'].includes(area);
   if(role==='sales_head') return area==='sales' || area==='salesPlans';
   if(role==='center_coordinator') return area==='doctors' || area==='clinic' || area==='finance';
@@ -708,6 +711,21 @@ function clinicAutoSummary(){
     return {...fact,planSales:plan.clinicSales||0,planRevenue:plan.revenue||0,planCame:plan.came||0,planPct:plan.revenue?pct(fact.revenue,plan.revenue):0};
   });
 }
+function revenueRows(){
+  return Array.isArray(state.revenueRows) ? state.revenueRows : [];
+}
+function revenueTotal(){
+  const dates = datesInRange();
+  return revenueRows().reduce((sum,row)=>sum+dates.reduce((a,d)=>a+Number(row.dates?.[d]||0),0),0);
+}
+function revenueSummary(){
+  const dates = datesInRange();
+  const total = revenueTotal();
+  return revenueRows().map(row=>{
+    const amount = dates.reduce((a,d)=>a+Number(row.dates?.[d]||0),0);
+    return {...row, amount, share:pct(amount,total)};
+  });
+}
 function financeRows(){ return state.financeRows.filter(r=>r.date>=state.filters.start && r.date<=state.filters.end); }
 function totals(){
   const ms=marketingSummary(), ss=salesSummary(), cs=clinicAutoSummary(), fs=financeRows();
@@ -725,7 +743,8 @@ function totals(){
     clinicSales:cs.reduce((a,b)=>a+b.sales,0),
     upsells:cs.reduce((a,b)=>a+b.upsells,0),
     clinicRevenue:cs.reduce((a,b)=>a+b.revenue,0),
-    totalRevenue:ss.reduce((a,b)=>a+b.revenue,0) + cs.reduce((a,b)=>a+b.revenue,0),
+    revenueSectionTotal:revenueTotal(),
+    totalRevenue:ss.reduce((a,b)=>a+b.revenue,0) + revenueTotal(),
     expenses:fs.reduce((a,b)=>a+Number(b.amount||0),0),
     approvedCount:fs.filter(x=>x.approved).length,
     financeCount:fs.length
@@ -804,7 +823,7 @@ function renderRnp(){
     ...dynamicMetricRows(),
     ['Клиника продажи',fmt(directionPlanTotal('clinicSales')),fmt(t.clinicSales),pct(t.clinicSales,directionPlanTotal('clinicSales')),state.owners?.clinic || 'Координатор','Врачи'],
     ['ОП выручка',money(salesPlanTotal('revenuePlan')),money(t.opRevenue),pct(t.opRevenue,salesPlanTotal('revenuePlan')),state.owners?.sales || 'РОП','Продажи'],
-    ['Клиника выручка',money(directionPlanTotal('revenue')),money(t.clinicRevenue),pct(t.clinicRevenue,directionPlanTotal('revenue')),state.owners?.clinic || 'Координатор','Врачи'],
+    ['Клиника выручка',money(directionPlanTotal('revenue')),money(t.revenueSectionTotal),pct(t.revenueSectionTotal,directionPlanTotal('revenue')),state.owners?.clinic || 'Координатор','Выручка'],
     ['Итого выручка',money(salesPlanTotal('revenuePlan') + directionPlanTotal('revenue')),money(t.totalRevenue),pct(t.totalRevenue,salesPlanTotal('revenuePlan') + directionPlanTotal('revenue')),state.owners?.finance || 'Ген. директор','ОП + клиника'],
     ['Финансы расходы',protectedExpenseMoney(financePlanTotal()),protectedExpenseMoney(t.expenses),canSeeExpenses()?pct(t.expenses,financePlanTotal()):0,state.owners?.finance || 'Владимир','Финансы']
   ];
@@ -988,6 +1007,35 @@ function renderDoctors(){
   }});
   document.getElementById('doctorsSummary').innerHTML=doctorSummary().map(d=>`<tr><td>${d.name}</td><td>${d.direction}</td><td>${fmt(d.appointments)}</td><td>${fmt(d.sales)}</td><td>${fmt(d.upsells)}</td><td>${money(d.revenue)}</td><td>${d.conversion}%</td></tr>`).join('');
 }
+function renderRevenue(){
+  const rows = revenueRows();
+  const dates = datesInRange();
+  const total = revenueTotal();
+  const kpiBox = document.getElementById('revenueKpis');
+  if(kpiBox) kpiBox.innerHTML = kpis([
+    ['₸','Итого выручка',money(total),'уйдёт в РНП'],
+    ['≡','Строк',fmt(rows.length),'показателей'],
+    ['◌','Средний день',money(dates.length? total/dates.length : 0),'за период'],
+    ['↗','Макс. день',money(Math.max(0,...dates.map(d=>rows.reduce((a,r)=>a+Number(r.dates?.[d]||0),0)))),'за период']
+  ]);
+  const matrix = document.getElementById('revenueMatrix');
+  if(matrix){
+    const head = `<table class="matrix"><thead><tr><th class="sticky-1">Показатель</th>${dates.map(d=>`<th>${fmtDate(d).slice(0,5)}</th>`).join('')}<th>Итого</th><th></th></tr></thead><tbody>`;
+    const body = rows.map(row=>{
+      const sum = dates.reduce((a,d)=>a+Number(row.dates?.[d]||0),0);
+      return `<tr data-revenue="${row.id}">
+        <td class="sticky-1"><input class="revenue-name" value="${row.name||''}"></td>
+        ${dates.map(d=>`<td><input class="revenue-input" data-date="${d}" type="number" value="${Number(row.dates?.[d]||0)}"></td>`).join('')}
+        <td><b>${money(sum)}</b></td>
+        <td><button type="button" class="delete revenue-delete">×</button></td>
+      </tr>`;
+    }).join('');
+    const foot = `<tr class="total-row"><td class="sticky-1"><b>Итого</b></td>${dates.map(d=>`<td><b>${money(rows.reduce((a,r)=>a+Number(r.dates?.[d]||0),0))}</b></td>`).join('')}<td><b>${money(total)}</b></td><td></td></tr>`;
+    matrix.innerHTML = head + body + foot + '</tbody></table>';
+  }
+  const summary = document.querySelector('#revenueSummaryTable tbody');
+  if(summary) summary.innerHTML = revenueSummary().map(r=>`<tr><td>${r.name}</td><td>${money(r.amount)}</td><td>${r.share}%</td></tr>`).join('');
+}
 function renderFinance(){
   const rows=financeRows(), approved=rows.filter(x=>x.approved), pending=rows.filter(x=>!x.approved), total=rows.reduce((a,b)=>a+Number(b.amount||0),0);
   document.getElementById('financeKpis').innerHTML=[
@@ -1066,7 +1114,7 @@ function showView(view){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   const el=document.getElementById('view-'+view); if(el) el.classList.add('active');
-  const titles={rnp:'РНП — сводный экран',home:'Главная',plans:'Планы месяца',marketing:'Маркетинг — таблица по дням',sales:'Продажи — чек-апы / диагностики',clinic:'Клиника — из врачей',doctors:'Врачи — основной ввод клиники',finance:'Финансы',knowledge:'База знаний',users:'Сотрудники',settings:'Настройки'};
+  const titles={rnp:'РНП — сводный экран',home:'Главная',plans:'Планы месяца',marketing:'Маркетинг — таблица по дням',sales:'Продажи — чек-апы / диагностики',clinic:'Клиника — из врачей',doctors:'Врачи — основной ввод клиники',revenue:'Выручка',finance:'Финансы',knowledge:'База знаний',users:'Сотрудники',settings:'Настройки'};
   document.getElementById('pageTitle').textContent=titles[view]||titles.rnp;
   toggleMobileMenu(false);
   window.scrollTo({top:0,behavior:'smooth'});
@@ -1448,6 +1496,20 @@ function bind(){
         renderAll();
       }
     }
+    if(target.classList.contains('revenue-input')){
+      if(!canEdit('revenue')){ toast('Нет прав на выручку'); renderAll(); return; }
+      const tr=target.closest('tr'), row=state.revenueRows.find(x=>x.id===tr.dataset.revenue);
+      if(row){
+        if(!row.dates) row.dates={};
+        row.dates[target.dataset.date]=Number(target.value||0);
+        save(false); renderAll();
+      }
+    }
+    if(target.classList.contains('revenue-name')){
+      if(!canEdit('revenue')){ toast('Нет прав на выручку'); renderAll(); return; }
+      const tr=target.closest('tr'), row=state.revenueRows.find(x=>x.id===tr.dataset.revenue);
+      if(row){ row.name=target.value; save(false); renderAll(); }
+    }
     if(target.classList.contains('finance-field')){
       if(!canEdit('finance') || !canAccessFinanceSection()){ toast('Нет прав на финансы'); renderAll(); return; }
       const tr=target.closest('tr'), row=state.financeRows.find(x=>x.id===tr.dataset.finance), key=target.dataset.key;
@@ -1521,11 +1583,18 @@ function bind(){
       }
     }
     if(e.target.classList.contains('finance-plan-delete')){if(!canSeeFinancePlans()){toast('Нет доступа к плану расходов');return;} activePlanPack().financePlans=financePlans().filter(x=>x.id!==e.target.closest('tr').dataset.financePlan);save();renderAll();}
+    if(e.target.classList.contains('revenue-delete')){if(!canEdit('revenue')){toast('Нет прав на выручку');return;} const id=e.target.closest('tr').dataset.revenue; state.revenueRows=state.revenueRows.filter(x=>x.id!==id); save(); renderAll();}
     if(e.target.classList.contains('finance-delete')){if(!canEdit('finance') || !canAccessFinanceSection()){toast('Нет прав на финансы');return;} state.financeRows=state.financeRows.filter(x=>x.id!==e.target.closest('tr').dataset.finance);save();renderAll();}
     if(e.target.classList.contains('doctor-assignment-delete')){if(!canEdit('doctors')){toast('Нет прав на врачей');return;} const id=e.target.closest('tr').dataset.doctorAssignment; state.doctorAssignments=state.doctorAssignments.filter(x=>x.id!==id); delete state.doctors[id]; save();renderAll();}
     if(e.target.classList.contains('user-delete')){if(!canEdit('users')){toast('Нет прав на сотрудников');return;} state.users=state.users.filter(x=>x.id!==e.target.closest('.user-item').dataset.id);save();renderAll();}
     if(e.target.classList.contains('kb-delete')){if(!canEdit('knowledge')){toast('Нет прав на базу знаний');return;} const id=e.target.closest('.kb-item').dataset.id;state.knowledgeDocs=state.knowledgeDocs.filter(x=>x.id!==id);await delFile(id).catch(()=>{});save();renderAll();}
     if(e.target.classList.contains('kb-open')){const id=e.target.closest('.kb-item').dataset.id;const f=await getFile(id).catch(()=>null);if(!f)return alert('В демо сохранены только метаданные. Загрузи реальный файл заново.');const url=URL.createObjectURL(f);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),15000);}
+  });
+  document.getElementById('addRevenueRow')?.addEventListener('click',()=>{
+    if(!canEdit('revenue')){toast('Нет прав на выручку');return;}
+    state.revenueRows = Array.isArray(state.revenueRows) ? state.revenueRows : [];
+    state.revenueRows.push({id:uid(), name:'Новая строка выручки', dates:{}});
+    save(); renderAll();
   });
   document.getElementById('addPayment').addEventListener('click',()=>{if(!canEdit('finance') || !canAccessFinanceSection()){toast('Нет прав на финансы');return;} state.financeRows.push({id:uid(),date:state.filters.entryDate,initiator:'Рус',category:'Маркетинг',purpose:'',amount:0,status:'На согласовании',approved:false,comment:''});save();renderAll();});
   document.getElementById('addUser').addEventListener('click',async()=>{

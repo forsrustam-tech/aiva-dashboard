@@ -48,6 +48,7 @@
       <button type="button" class="nav-btn" data-view="sales"><span>↗</span>Продажи</button>
       <button type="button" class="nav-btn" data-view="clinic"><span>☤</span>Клиника</button>
       <button type="button" class="nav-btn" data-view="doctors"><span>⚕</span>Врачи</button>
+      <button type="button" class="nav-btn" data-view="revenue"><span>▣</span>Выручка</button>
       <button type="button" class="nav-btn" data-view="finance" data-sensitive="finance"><span>₸</span>Финансы</button>
       <button type="button" class="nav-btn" data-view="knowledge"><span>✦</span>База знаний</button>
       <button type="button" class="nav-btn" data-view="users"><span>◉</span>Сотрудники</button>
@@ -272,6 +273,27 @@
         <div class="table-wrap"><table class="clean-table compact">
           <thead><tr><th>Врач</th><th>Направление</th><th>Приёмы</th><th>Продажи</th><th>Доплаты</th><th>Выручка</th><th>Конв.</th></tr></thead>
           <tbody id="doctorsSummary"></tbody>
+        </table></div>
+      </article>
+    </section>
+
+
+    <section class="view" id="view-revenue">
+      <div class="section-head">
+        <div><small>Основной ввод выручки</small><h3>Выручка — таблица по дням</h3></div>
+        <button type="button" id="addRevenueRow" class="btn">+ Добавить строку</button>
+      </div>
+      <div class="kpis small" id="revenueKpis"></div>
+      <article class="card">
+        <div class="card-head"><h3>Выручка по статьям</h3><small>Итоговая сумма уходит в РНП</small></div>
+        <div class="matrix-note">Заполняй суммы по дням. Названия строк можно редактировать. Итог считается автоматически.</div>
+        <div class="matrix-wrap" id="revenueMatrix"></div>
+      </article>
+      <article class="card mt">
+        <div class="card-head"><h3>Итоги</h3><small>Сумма за выбранный период</small></div>
+        <div class="table-wrap"><table class="clean-table" id="revenueSummaryTable">
+          <thead><tr><th>Показатель</th><th>Итого</th><th>Доля</th></tr></thead>
+          <tbody></tbody>
         </table></div>
       </article>
     </section>
