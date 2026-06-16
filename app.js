@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v10_1_site';
+const STORAGE_KEY = 'aiva_dashboard_v11_1_site';
 const CLOUD_STATE_ID = 'main';
 let supabaseClient = null;
 let cloudEnabled = false;
@@ -48,6 +48,49 @@ const dMetrics = [
   {key:'revenue', label:'Выручка', money:true}
 ];
 
+function defaultMarketingMetrics(){
+  return [
+    {key:'budget', label:'Бюджет', money:true, rnp:true},
+    {key:'impressions', label:'Показы', rnp:true},
+    {key:'clicks', label:'Клики', rnp:true},
+    {key:'leads', label:'Лиды', rnp:true}
+  ];
+}
+function defaultSalesMetrics(){
+  return [
+    {key:'leads', label:'Лиды', rnp:true},
+    {key:'calls', label:'Дозвон', rnp:true},
+    {key:'appointments', label:'Записи', rnp:true},
+    {key:'checkups', label:'Чек-апы', rnp:true},
+    {key:'diagnostics', label:'Диагностики', rnp:true},
+    {key:'revenue', label:'Выручка', money:true, rnp:false}
+  ];
+}
+function marketingMetrics(){
+  if(!state.metricConfig) state.metricConfig = {};
+  if(!state.metricConfig.marketing) state.metricConfig.marketing = defaultMarketingMetrics();
+  return state.metricConfig.marketing;
+}
+function salesMetrics(){
+  if(!state.metricConfig) state.metricConfig = {};
+  if(!state.metricConfig.sales) state.metricConfig.sales = defaultSalesMetrics();
+  return state.metricConfig.sales;
+}
+function metricKey(label){
+  const base = slug(label || 'metric') || 'metric';
+  let key = base;
+  let i = 2;
+  const used = new Set([...marketingMetrics(), ...salesMetrics(), ...dMetrics].map(m=>m.key));
+  while(used.has(key)) key = base + '_' + i++;
+  return key;
+}
+function ensureMetricDefaults(section, row){
+  const metrics = section === 'marketing' ? marketingMetrics() : section === 'sales' ? salesMetrics() : dMetrics;
+  metrics.forEach(m=>{ if(row[m.key] === undefined) row[m.key] = 0; });
+  return row;
+}
+
+
 function uid(){ return 'id-' + Math.random().toString(36).slice(2,10); }
 function slug(s){ return String(s||'').trim().toLowerCase().replace(/[^а-яa-z0-9]+/gi,'-').replace(/^-|-$/g,''); }
 function doctorKey(name, direction){ return slug(name) + '__' + slug(direction); }
@@ -66,6 +109,7 @@ function currentMonthKey(){ return monthKeyFromDate(state?.filters?.start || tod
 function buildDefault(){
   const data = {
     filters:{start:monthStart(monthKeyFromDate(todayIso())),end:monthEnd(monthKeyFromDate(todayIso())),entryDate:todayIso(),direction:'Все направления'},
+    metricConfig:{marketing:defaultMarketingMetrics(),sales:defaultSalesMetrics()},
     directionPlans:{
       'Урология':{marketingBudget:1800000,impressions:260000,clicks:5200,leads:650,came:180,clinicSales:95,revenue:11000000,comment:'Основной фокус'},
       'Терапия':{marketingBudget:1600000,impressions:235000,clicks:4700,leads:600,came:175,clinicSales:90,revenue:9000000,comment:'Стабильное направление'},
@@ -205,6 +249,9 @@ function migrateState(s){
   if(!s.filters.entryDate) s.filters.entryDate = todayIso();
   if(!s.filters.direction) s.filters.direction = 'Все направления';
 
+  if(!s.metricConfig) s.metricConfig = {};
+  if(!s.metricConfig.marketing || !Array.isArray(s.metricConfig.marketing) || !s.metricConfig.marketing.length) s.metricConfig.marketing = defaultMarketingMetrics();
+  if(!s.metricConfig.sales || !Array.isArray(s.metricConfig.sales) || !s.metricConfig.sales.length) s.metricConfig.sales = defaultSalesMetrics();
   if(!s.directionPlans || !Object.keys(s.directionPlans).length) s.directionPlans = clone(fresh.directionPlans);
   if(!s.salesPlans || !s.salesPlans.length) s.salesPlans = clone(fresh.salesPlans);
   if(!s.financePlans || !s.financePlans.length) s.financePlans = clone(fresh.financePlans);
@@ -317,23 +364,36 @@ function kpi(icon,label,value,delta){ return `<div class="kpi"><div class="label
 function status(p){ if(p>=95)return['good','В плане']; if(p>=80)return['warn','Риск']; return['bad','Просадка'];}
 function initials(name){ return name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();}
 const roleNames = {
-  owner:'Полный доступ',
-  manager:'Управляющий',
-  marketing:'Маркетинг',
-  sales:'Продажи / РОП',
-  clinic:'Клиника / Координатор',
+  general_director:'Генеральный директор',
+  marketing_director:'Директор по маркетингу',
+  sales_head:'РОП',
+  center_coordinator:'Координатор центра',
+  clinic_director:'Директор клиники',
+  owner:'Генеральный директор',
+  approver:'Генеральный директор',
+  manager:'Управляющий legacy',
+  marketing:'Маркетолог',
+  sales:'Менеджер продаж',
+  clinic:'Клиника',
   finance:'Финансы',
-  approver:'Владимир / Подтверждение',
   viewer:'Только просмотр'
 };
 const roleViews = {
+  general_director:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
   owner:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
+  approver:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
+
+  marketing_director:['rnp','home','plans','marketing','sales','clinic','doctors','knowledge','users','settings'],
   manager:['rnp','home','plans','marketing','sales','clinic','doctors','knowledge','users','settings'],
+
+  sales_head:['rnp','home','plans','sales','knowledge','settings'],
+  center_coordinator:['rnp','home','clinic','doctors','finance','knowledge','settings'],
+  clinic_director:['rnp','home','finance','knowledge','settings'],
+
   marketing:['rnp','home','marketing','knowledge','settings'],
   sales:['rnp','home','sales','knowledge','settings'],
   clinic:['rnp','home','clinic','doctors','knowledge','settings'],
   finance:['rnp','home','finance','knowledge','settings'],
-  approver:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
   viewer:['rnp','home','knowledge','settings']
 };
 function activeUser(){
@@ -355,13 +415,18 @@ function canView(view){
 }
 function canEdit(area){
   const role = activeUser().role || 'viewer';
-  if(['owner','manager','approver'].includes(role)) return true;
+
+  if(['general_director','owner','approver'].includes(role)) return true;
+  if(['marketing_director','manager'].includes(role)) return !['finance','financePlans'].includes(area);
+  if(role==='sales_head') return area==='sales' || area==='salesPlans';
+  if(role==='center_coordinator') return area==='doctors' || area==='clinic' || area==='finance';
+  if(role==='clinic_director') return area==='finance';
+
   if(area==='marketing') return role==='marketing';
   if(area==='sales') return role==='sales';
   if(area==='doctors') return role==='clinic';
-  if(area==='finance') return role==='finance' || role==='approver';
-  if(area==='plans') return false;
-  if(area==='users') return false;
+  if(area==='finance') return role==='finance';
+  if(area==='plans' || area==='users') return false;
   if(area==='knowledge') return role!=='viewer';
   return false;
 }
@@ -373,7 +438,11 @@ function activeAssignedTo(){
 }
 function entityAllowedForUser(section, entity){
   const role = activeUser().role || 'viewer';
-  if(['owner','manager','approver'].includes(role)) return true;
+  if(['general_director','owner','approver','marketing_director','manager'].includes(role)) return true;
+  if(role==='sales_head' && section==='sales') return true;
+  if(['center_coordinator','clinic_director','finance'].includes(role) && section==='finance') return true;
+  if(role==='center_coordinator' && (section==='doctors' || section==='clinic')) return true;
+
   const assigned = activeAssignedTo();
   if(section === 'sales' && role === 'sales'){
     return normName(entity) === assigned || normName(entity).includes(assigned) || assigned.includes(normName(entity));
@@ -384,7 +453,6 @@ function entityAllowedForUser(section, entity){
     return !assigned || name === assigned || name.includes(assigned) || assigned.includes(name);
   }
   if(section === 'marketing' && role === 'marketing') return true;
-  if(section === 'finance' && (role === 'finance' || role === 'approver')) return true;
   return false;
 }
 function canEditEntity(section, entity){
@@ -396,10 +464,7 @@ function canSeeProfit(){
   const role = user.role || 'viewer';
   const name = String(user.name || '').toLowerCase();
   const email = String(user.email || '').toLowerCase();
-
-  // Чистая прибыль доступна только роли Владимира.
-  // На практике это роль approver. Дополнительно подстраховка по имени/email.
-  return role === 'owner' || role === 'approver' || name.includes('владимир') || email.includes('vladimir');
+  return ['general_director','owner','approver'].includes(role) || name.includes('владимир') || email.includes('vladimir');
 }
 function protectedMoney(value){
   return canSeeProfit() ? money(value) : 'Скрыто';
@@ -413,9 +478,26 @@ function canSeeExpenses(){
   const role = user.role || 'viewer';
   const name = String(user.name || '').toLowerCase();
   const email = String(user.email || '').toLowerCase();
-
-  // Расходы видят только полный доступ: owner и approver/Владимир.
-  return role === 'owner' || role === 'approver' || name.includes('владимир') || email.includes('vladimir');
+  return ['general_director','owner','approver'].includes(role) || name.includes('владимир') || email.includes('vladimir');
+}
+function canAccessFinanceSection(){
+  const role = activeUser().role || 'viewer';
+  return ['general_director','owner','approver','center_coordinator','clinic_director','finance'].includes(role);
+}
+function canSeeDirectionPlans(){
+  const role = activeUser().role || 'viewer';
+  return ['general_director','owner','approver','marketing_director','manager'].includes(role);
+}
+function canSeeSalesPlans(){
+  const role = activeUser().role || 'viewer';
+  return ['general_director','owner','approver','marketing_director','manager','sales_head'].includes(role);
+}
+function canEditSalesPlans(){
+  const role = activeUser().role || 'viewer';
+  return ['general_director','owner','approver','marketing_director','manager','sales_head'].includes(role);
+}
+function canSeeFinancePlans(){
+  return canSeeExpenses();
 }
 function protectedExpenseMoney(value){
   return canSeeExpenses() ? money(value) : 'Скрыто';
@@ -429,9 +511,11 @@ function getValue(section,entity,date,metric){
   return state[section][entity]?.[date]?.[metric] || 0;
 }
 function setValue(section,entity,date,metric,value){
-  const defaults = section==='marketing' ? {budget:0,impressions:0,clicks:0,leads:0}
-    : section==='sales' ? {leads:0,calls:0,appointments:0,checkups:0,diagnostics:0,revenue:0}
-    : {appointments:0,sales:0,upsells:0,revenue:0};
+  const defaults = section==='marketing'
+    ? Object.fromEntries(marketingMetrics().map(m=>[m.key,0]))
+    : section==='sales'
+      ? Object.fromEntries(salesMetrics().map(m=>[m.key,0]))
+      : {appointments:0,sales:0,upsells:0,revenue:0};
   if(section==='doctors'){
     const assignment = state.doctorAssignments?.find(a=>a.id===entity);
     if(!state.doctors[entity]) state.doctors[entity]={name:assignment?.name || entity,direction:assignment?.direction || '',dates:{}};
@@ -491,7 +575,7 @@ function financePlanTotal(){ return financePlans().reduce((a,p)=>a+Number(p.amou
 
 function marketingSummary(){
   return customDirectionsPure().filter(isDirectionVisible).map(dir=>{
-    const s=sumObj('marketing',[dir],mMetrics), p=directionPlans()[dir]||{};
+    const s=sumObj('marketing',[dir],marketingMetrics()), p=directionPlans()[dir]||{};
     const cpl = s.leads ? Math.round(s.budget/s.leads) : 0;
     const cpc = s.clicks ? Math.round(s.budget/s.clicks) : 0;
     const ctr = s.impressions ? pct(s.clicks,s.impressions) : 0;
@@ -515,7 +599,7 @@ function marketingSummary(){
 function salesSummary(){
   syncSalesWithPlans();
   return salesPlanManagers().map(m=>{
-    const s=sumObj('sales',[m],sMetrics), p=salesPlans().find(x=>x.manager===m)||{};
+    const s=sumObj('sales',[m],salesMetrics()), p=salesPlans().find(x=>x.manager===m)||{};
     const totalSales = Number(s.checkups||0)+Number(s.diagnostics||0);
     return {manager:m,...s,totalSales,rate:pct(s.appointments,s.leads),planAppointments:p.appointmentsPlan||0,planCheckups:p.checkupsPlan||0,planDiagnostics:p.diagnosticsPlan||0,planRevenue:p.revenuePlan||0};
   });
@@ -578,6 +662,44 @@ function matrixHtml(section, entities, metrics, label){
   return `<table class="matrix">${header}<tbody>${body}</tbody></table>`;
 }
 
+function dynamicMetricRows(){
+  const rows = [];
+
+  marketingMetrics().filter(m=>m.rnp).forEach(m=>{
+    const fact = marketingSummary().reduce((a,b)=>a+Number(b[m.key]||0),0);
+    const plan = directionPlanTotal(m.key === 'budget' ? 'marketingBudget' : m.key);
+    rows.push([
+      'Маркетинг ' + m.label.toLowerCase(),
+      m.money ? money(plan) : fmt(plan),
+      m.money ? money(fact) : fmt(fact),
+      pct(fact,plan),
+      'Рус',
+      'Маркетинг'
+    ]);
+  });
+
+  salesMetrics().filter(m=>m.rnp).forEach(m=>{
+    const fact = salesSummary().reduce((a,b)=>a+Number(b[m.key]||0),0);
+    let planKey = m.key + 'Plan';
+    if(m.key === 'calls') planKey = 'callsPlan';
+    if(m.key === 'appointments') planKey = 'appointmentsPlan';
+    if(m.key === 'checkups') planKey = 'checkupsPlan';
+    if(m.key === 'diagnostics') planKey = 'diagnosticsPlan';
+    if(m.key === 'revenue') planKey = 'revenuePlan';
+    if(m.key === 'leads') planKey = 'leadsPlan';
+    const plan = salesPlanTotal(planKey);
+    rows.push([
+      'ОП ' + m.label.toLowerCase(),
+      m.money ? money(plan) : fmt(plan),
+      m.money ? money(fact) : fmt(fact),
+      pct(fact,plan),
+      'РОП',
+      'Продажи'
+    ]);
+  });
+
+  return rows;
+}
 function renderRnp(){
   const t=totals();
   const profit=t.clinicRevenue-t.expenses;
@@ -594,13 +716,7 @@ function renderRnp(){
   ].map(x=>kpi(...x)).join('');
 
   const rows=[
-    ['Маркетинг бюджет',money(directionPlanTotal('marketingBudget')),money(t.marketingBudget),pct(t.marketingBudget,directionPlanTotal('marketingBudget')),'Рус','Маркетинг'],
-    ['Маркетинг показы',fmt(directionPlanTotal('impressions')),fmt(marketingSummary().reduce((a,b)=>a+b.impressions,0)),pct(marketingSummary().reduce((a,b)=>a+b.impressions,0),directionPlanTotal('impressions')),'Рус','Маркетинг'],
-    ['Маркетинг клики',fmt(directionPlanTotal('clicks')),fmt(marketingSummary().reduce((a,b)=>a+b.clicks,0)),pct(marketingSummary().reduce((a,b)=>a+b.clicks,0),directionPlanTotal('clicks')),'Рус','Маркетинг'],
-    ['Маркетинг лиды',fmt(directionPlanTotal('leads')),fmt(t.leads),pct(t.leads,directionPlanTotal('leads')),'Рус','Маркетинг'],
-    ['ОП записи',fmt(salesPlanTotal('appointmentsPlan')),fmt(t.salesAppointments),pct(t.salesAppointments,salesPlanTotal('appointmentsPlan')),'Мадина','Продажи'],
-    ['ОП чек-апы',fmt(salesPlanTotal('checkupsPlan')),fmt(t.checkups),pct(t.checkups,salesPlanTotal('checkupsPlan')),'Мадина','Продажи'],
-    ['ОП диагностики',fmt(salesPlanTotal('diagnosticsPlan')),fmt(t.diagnostics),pct(t.diagnostics,salesPlanTotal('diagnosticsPlan')),'Мадина','Продажи'],
+    ...dynamicMetricRows(),
     ['Клиника продажи',fmt(directionPlanTotal('clinicSales')),fmt(t.clinicSales),pct(t.clinicSales,directionPlanTotal('clinicSales')),'Координатор','Врачи'],
     ['Клиника выручка',money(directionPlanTotal('revenue')),money(t.clinicRevenue),pct(t.clinicRevenue,directionPlanTotal('revenue')),'Координатор','Врачи'],
     ['Финансы расходы',protectedExpenseMoney(financePlanTotal()),protectedExpenseMoney(t.expenses),canSeeExpenses()?pct(t.expenses,financePlanTotal()):0,'Владимир','Финансы']
@@ -645,41 +761,51 @@ function renderHome(){
 }
 function renderPlans(){
   document.getElementById('plansKpis').innerHTML=[
-    ['◎','План маркетинга',money(directionPlanTotal('marketingBudget')),fmt(directionPlanTotal('leads'))+' лидов'],
-    ['↗','План ОП',fmt(salesPlanTotal('checkupsPlan')+salesPlanTotal('diagnosticsPlan')),'чек-апы + диагностики'],
-    ['☤','План клиники',money(directionPlanTotal('revenue')),fmt(directionPlanTotal('clinicSales'))+' продаж'],
+    ['◎','План маркетинга',canSeeDirectionPlans()?money(directionPlanTotal('marketingBudget')):'Скрыто',canSeeDirectionPlans()?fmt(directionPlanTotal('leads'))+' лидов':'скрыто'],
+    ['↗','План ОП',canSeeSalesPlans()?fmt(salesPlanTotal('checkupsPlan')+salesPlanTotal('diagnosticsPlan')):'Скрыто',canSeeSalesPlans()?'чек-апы + диагностики':'скрыто'],
+    ['☤','План клиники',canSeeDirectionPlans()?money(directionPlanTotal('revenue')):'Скрыто',canSeeDirectionPlans()?fmt(directionPlanTotal('clinicSales'))+' продаж':'скрыто'],
     ['₸','План расходов',protectedExpenseMoney(financePlanTotal()),canSeeExpenses()?'финансы':'скрыто']
   ].map(x=>kpi(...x)).join('');
-  document.querySelector('#directionPlansTable tbody').innerHTML=customDirectionsPure().map(dir=>{
-    if(!directionPlans()[dir]) directionPlans()[dir] = {marketingBudget:0,impressions:0,clicks:0,leads:0,came:0,clinicSales:0,revenue:0,comment:''};
-    const p=directionPlans()[dir];
-    return `<tr data-plan-dir="${dir}">
-      <td><b>${dir}</b></td>
-      <td><input class="direction-plan" data-key="marketingBudget" type="number" value="${p.marketingBudget}"></td>
-      <td><input class="direction-plan" data-key="impressions" type="number" value="${p.impressions}"></td>
-      <td><input class="direction-plan" data-key="clicks" type="number" value="${p.clicks}"></td>
-      <td><input class="direction-plan" data-key="leads" type="number" value="${p.leads}"></td>
-      <td><input class="direction-plan" data-key="came" type="number" value="${p.came}"></td>
-      <td><input class="direction-plan" data-key="clinicSales" type="number" value="${p.clinicSales}"></td>
-      <td><input class="direction-plan" data-key="revenue" type="number" value="${p.revenue}"></td>
-      <td><input class="direction-plan" data-key="comment" value="${p.comment||''}"></td>
-    </tr>`;
-  }).join('');
-  document.querySelector('#salesPlansTable tbody').innerHTML=salesPlans().map(p=>`<tr data-sales-plan="${p.id}">
-    <td><input class="sales-plan" data-key="manager" value="${p.manager}"></td>
-    <td><input class="sales-plan" data-key="leadsPlan" type="number" value="${p.leadsPlan}"></td>
-    <td><input class="sales-plan" data-key="callsPlan" type="number" value="${p.callsPlan}"></td>
-    <td><input class="sales-plan" data-key="appointmentsPlan" type="number" value="${p.appointmentsPlan}"></td>
-    <td><input class="sales-plan" data-key="checkupsPlan" type="number" value="${p.checkupsPlan}"></td>
-    <td><input class="sales-plan" data-key="diagnosticsPlan" type="number" value="${p.diagnosticsPlan}"></td>
-    <td><input class="sales-plan" data-key="revenuePlan" type="number" value="${p.revenuePlan}"></td>
-    <td><input class="sales-plan" data-key="comment" value="${p.comment||''}"></td>
-    <td><button class="delete sales-plan-delete" type="button">×</button></td>
-  </tr>`).join('');
-  const financeCard = document.getElementById('financePlanCard');
-  if(financeCard) financeCard.style.display = canSeeExpenses() ? '' : 'none';
 
-  if(canSeeExpenses()){
+  const directionPlanCard = document.getElementById('directionPlansTable')?.closest('.card');
+  if(directionPlanCard) directionPlanCard.style.display = canSeeDirectionPlans() ? '' : 'none';
+  if(canSeeDirectionPlans()){
+    document.querySelector('#directionPlansTable tbody').innerHTML=customDirectionsPure().map(dir=>{
+      if(!directionPlans()[dir]) directionPlans()[dir] = {marketingBudget:0,impressions:0,clicks:0,leads:0,came:0,clinicSales:0,revenue:0,comment:''};
+      const p=directionPlans()[dir];
+      return `<tr data-plan-dir="${dir}">
+        <td><b>${dir}</b></td>
+        <td><input class="direction-plan" data-key="marketingBudget" type="number" value="${p.marketingBudget}"></td>
+        <td><input class="direction-plan" data-key="impressions" type="number" value="${p.impressions}"></td>
+        <td><input class="direction-plan" data-key="clicks" type="number" value="${p.clicks}"></td>
+        <td><input class="direction-plan" data-key="leads" type="number" value="${p.leads}"></td>
+        <td><input class="direction-plan" data-key="came" type="number" value="${p.came}"></td>
+        <td><input class="direction-plan" data-key="clinicSales" type="number" value="${p.clinicSales}"></td>
+        <td><input class="direction-plan" data-key="revenue" type="number" value="${p.revenue}"></td>
+        <td><input class="direction-plan" data-key="comment" value="${p.comment||''}"></td>
+      </tr>`;
+    }).join('');
+  }
+
+  const salesPlanCard = document.getElementById('salesPlansTable')?.closest('.card');
+  if(salesPlanCard) salesPlanCard.style.display = canSeeSalesPlans() ? '' : 'none';
+  if(canSeeSalesPlans()){
+    document.querySelector('#salesPlansTable tbody').innerHTML=salesPlans().map(p=>`<tr data-sales-plan="${p.id}">
+      <td><input class="sales-plan" data-key="manager" value="${p.manager}"></td>
+      <td><input class="sales-plan" data-key="leadsPlan" type="number" value="${p.leadsPlan}"></td>
+      <td><input class="sales-plan" data-key="callsPlan" type="number" value="${p.callsPlan}"></td>
+      <td><input class="sales-plan" data-key="appointmentsPlan" type="number" value="${p.appointmentsPlan}"></td>
+      <td><input class="sales-plan" data-key="checkupsPlan" type="number" value="${p.checkupsPlan}"></td>
+      <td><input class="sales-plan" data-key="diagnosticsPlan" type="number" value="${p.diagnosticsPlan}"></td>
+      <td><input class="sales-plan" data-key="revenuePlan" type="number" value="${p.revenuePlan}"></td>
+      <td><input class="sales-plan" data-key="comment" value="${p.comment||''}"></td>
+      <td><button class="delete sales-plan-delete" type="button">×</button></td>
+    </tr>`).join('');
+  }
+
+  const financeCard = document.getElementById('financePlanCard');
+  if(financeCard) financeCard.style.display = canSeeFinancePlans() ? '' : 'none';
+  if(canSeeFinancePlans()){
     document.querySelector('#financePlansTable tbody').innerHTML=financePlans().map(p=>`<tr data-finance-plan="${p.id}">
       <td><input class="finance-plan" data-key="category" value="${p.category}"></td>
       <td><input class="finance-plan" data-key="amountPlan" type="number" value="${p.amountPlan}"></td>
@@ -688,9 +814,22 @@ function renderPlans(){
     </tr>`).join('');
   }
 }
+function renderMetricSettings(section){
+  const box = document.getElementById(section === 'marketing' ? 'marketingMetricSettings' : 'salesMetricSettings');
+  if(!box) return;
+  const metrics = section === 'marketing' ? marketingMetrics() : salesMetrics();
+  const canEditMetrics = section === 'marketing' ? canEdit('marketing') || canEdit('plans') : canEditSalesPlans?.() || canEdit('sales');
+  box.innerHTML = metrics.map(m=>`<div class="metric-chip" data-section="${section}" data-key="${m.key}">
+    <input class="metric-label" type="text" value="${m.label}" ${canEditMetrics?'':'disabled'}>
+    <label><input class="metric-money" type="checkbox" ${m.money?'checked':''} ${canEditMetrics?'':'disabled'}> ₸</label>
+    <label><input class="metric-rnp" type="checkbox" ${m.rnp?'checked':''} ${canEditMetrics?'':'disabled'}> РНП</label>
+    ${canEditMetrics?'<button type="button" class="delete metric-delete">×</button>':''}
+  </div>`).join('') + (canEditMetrics ? `<button type="button" class="metric-add" data-section="${section}">+ Показатель</button>` : '');
+}
 function renderMarketing(){
+  renderMetricSettings('marketing');
   const entities=directionsPure.filter(isDirectionVisible);
-  document.getElementById('marketingMatrix').innerHTML=matrixHtml('marketing',entities,mMetrics,{header:'Направление',name:x=>x});
+  document.getElementById('marketingMatrix').innerHTML=matrixHtml('marketing',entities,marketingMetrics(),{header:'Направление',name:x=>x});
   const s=marketingSummary();
   const budget=s.reduce((a,b)=>a+b.budget,0);
   const impressions=s.reduce((a,b)=>a+b.impressions,0);
@@ -705,8 +844,9 @@ function renderMarketing(){
   document.getElementById('marketingSummary').innerHTML=s.map(x=>`<tr><td>${x.direction}</td><td>${money(x.planBudget)}</td><td>${money(x.budget)}</td><td>${fmt(x.impressions)}</td><td>${fmt(x.clicks)}</td><td>${fmt(x.leads)}</td><td>${x.cpl?money(x.cpl):'—'}</td><td>${x.ctr}%</td><td>${x.cpc?money(x.cpc):'—'}</td><td>${x.planPct}%</td></tr>`).join('');
 }
 function renderSales(){
+  renderMetricSettings('sales');
   syncSalesWithPlans();
-  document.getElementById('salesMatrix').innerHTML=matrixHtml('sales',salesPlanManagers(),sMetrics,{header:'Менеджер',name:x=>x});
+  document.getElementById('salesMatrix').innerHTML=matrixHtml('sales',salesPlanManagers(),salesMetrics(),{header:'Менеджер',name:x=>x});
   const s=salesSummary();
   const leads=s.reduce((a,b)=>a+b.leads,0), calls=s.reduce((a,b)=>a+b.calls,0), app=s.reduce((a,b)=>a+b.appointments,0), checkups=s.reduce((a,b)=>a+b.checkups,0), diagnostics=s.reduce((a,b)=>a+b.diagnostics,0);
   document.getElementById('salesKpis').innerHTML=[
@@ -747,10 +887,10 @@ function renderDoctors(){
 function renderFinance(){
   const rows=financeRows(), approved=rows.filter(x=>x.approved), pending=rows.filter(x=>!x.approved), total=rows.reduce((a,b)=>a+Number(b.amount||0),0);
   document.getElementById('financeKpis').innerHTML=[
-    ['₸','Все заявки',money(total),`${pct(total,financePlanTotal())}% от плана`],
-    ['✓','Одобрено',money(approved.reduce((a,b)=>a+Number(b.amount||0),0)),'Владимир'],
-    ['◌','Ожидает',money(pending.reduce((a,b)=>a+Number(b.amount||0),0)),'на согласовании'],
-    ['◉','Подтв.',pct(approved.length,rows.length)+'%','доля']
+    ['₸','Все заявки',protectedExpenseMoney(total),canSeeExpenses()?`${pct(total,financePlanTotal())}% от плана`:'скрыто'],
+    ['✓','Одобрено',protectedExpenseMoney(approved.reduce((a,b)=>a+Number(b.amount||0),0)),canSeeExpenses()?'Владимир':'скрыто'],
+    ['◌','Ожидает',protectedExpenseMoney(pending.reduce((a,b)=>a+Number(b.amount||0),0)),canSeeExpenses()?'на согласовании':'скрыто'],
+    ['◉','Подтв.',canSeeExpenses()?pct(approved.length,rows.length)+'%':'Скрыто',canSeeExpenses()?'доля':'скрыто']
   ].map(x=>kpi(...x)).join('');
   document.querySelector('#financeTable tbody').innerHTML=rows.map(r=>`<tr data-finance="${r.id}">
     <td><input class="finance-field" data-key="date" type="date" value="${r.date}"></td>
@@ -768,12 +908,12 @@ function renderKnowledge(){
   document.getElementById('kbList').innerHTML=state.knowledgeDocs.map(d=>`<div class="kb-item" data-id="${d.id}"><div><b>${d.title}</b><div class="kb-meta"><span class="pill">${d.category}</span><span class="pill">${d.fileName}</span></div><div class="muted">${d.description}</div></div><div><button class="secondary kb-open" type="button">Открыть</button> <button class="delete kb-delete" type="button">×</button></div></div>`).join('');
 }
 function renderUsers(){
-  const roles = ['owner','manager','marketing','sales','clinic','finance','approver','viewer'];
+  const roles = ['general_director','marketing_director','sales_head','center_coordinator','clinic_director','sales','marketing','clinic','finance','viewer','owner','approver','manager'];
   document.getElementById('usersList').innerHTML=state.users.map(u=>`<div class="user-item user-edit-item" data-id="${u.id}">
     <div class="form user-edit-form">
       <label>Имя<input class="user-field" data-key="name" value="${u.name||''}"></label>
       <label>Email<input class="user-field" data-key="email" value="${u.email||''}"></label>
-      <label>Роль<select class="user-field" data-key="role">${roles.map(r=>`<option value="${r}" ${r===(u.role||'viewer')?'selected':''}>${r}</option>`).join('')}</select></label>
+      <label>Роль<select class="user-field" data-key="role">${roles.map(r=>`<option value="${r}" ${r===(u.role||'viewer')?'selected':''}>${roleNames[r]||r}</option>`).join('')}</select></label>
       <label>Доступ к строке / врачу<input class="user-field" data-key="assignedTo" value="${u.assignedTo||u.assigned_to||''}" placeholder="Мария / Асем Атыгаева"></label>
     </div>
     <div><span class="badge good">${u.role||'viewer'}</span> <button class="delete user-delete" type="button">×</button></div>
@@ -800,12 +940,12 @@ function renderAll(){
 }
 function applyRoleUi(){
   document.querySelectorAll('.nav-btn').forEach(btn=>{
-    const isLocked = !canView(btn.dataset.view) || (btn.dataset.sensitive === 'finance' && !canSeeExpenses());
+    const isLocked = !canView(btn.dataset.view) || (btn.dataset.sensitive === 'finance' && !canAccessFinanceSection());
     btn.classList.toggle('locked', isLocked);
   });
 }
 function showView(view){
-  if(!canView(view) || (view === 'finance' && !canSeeExpenses())){
+  if(!canView(view) || (view === 'finance' && !canAccessFinanceSection())){
     toast('Нет доступа для роли: ' + (roleNames[activeUser().role] || activeUser().role));
     return;
   }
@@ -1028,7 +1168,7 @@ function bind(){
   window.addEventListener('resize',()=>{ if(window.innerWidth > 980) toggleMobileMenu(false); });
   document.getElementById('resetPlansDemo').addEventListener('click',()=>{if(!canEdit('plans')){toast('Нет прав на планы');return;} const fresh=buildDefault();activePlanPack().directionPlans=fresh.directionPlans;activePlanPack().salesPlans=fresh.salesPlans;activePlanPack().financePlans=fresh.financePlans;save();renderAll();});
   document.getElementById('addDirectionPlan').addEventListener('click',()=>{
-    if(!canEdit('plans')){toast('Нет прав на планы');return;}
+    if(!canSeeDirectionPlans() || !canEdit('plans')){toast('Нет прав на планы');return;}
     let name = prompt('Название направления');
     if(!name) return;
     name = name.trim();
@@ -1039,7 +1179,7 @@ function bind(){
     save(); renderAll();
   });
   document.getElementById('addSalesPlanRow').addEventListener('click',()=>{
-    if(!canEdit('plans')){toast('Нет прав на планы');return;}
+    if(!canEditSalesPlans()){toast('Нет прав на план ОП');return;}
     let baseName = 'Новый менеджер';
     let name = baseName;
     let i = 2;
@@ -1049,7 +1189,7 @@ function bind(){
     save(); renderAll();
   });
   document.getElementById('addFinancePlanRow').addEventListener('click',()=>{
-    if(!canEdit('plans') || !canSeeExpenses()){toast('Нет доступа к плану расходов');return;}
+    if(!canSeeFinancePlans()){toast('Нет доступа к плану расходов');return;}
     financePlans().push({id:uid(),category:'Новая статья',amountPlan:0,comment:''});
     save(); renderAll();
   });
@@ -1071,6 +1211,24 @@ function bind(){
 
   document.addEventListener('change',e=>{
     const target=e.target;
+    if(target.classList.contains('metric-label')){
+      const chip = target.closest('.metric-chip');
+      const list = chip.dataset.section === 'marketing' ? marketingMetrics() : salesMetrics();
+      const metric = list.find(m=>m.key===chip.dataset.key);
+      if(metric){ metric.label=target.value; save(false); renderAll(); }
+    }
+    if(target.classList.contains('metric-money')){
+      const chip = target.closest('.metric-chip');
+      const list = chip.dataset.section === 'marketing' ? marketingMetrics() : salesMetrics();
+      const metric = list.find(m=>m.key===chip.dataset.key);
+      if(metric){ metric.money=target.checked; save(false); renderAll(); }
+    }
+    if(target.classList.contains('metric-rnp')){
+      const chip = target.closest('.metric-chip');
+      const list = chip.dataset.section === 'marketing' ? marketingMetrics() : salesMetrics();
+      const metric = list.find(m=>m.key===chip.dataset.key);
+      if(metric){ metric.rnp=target.checked; save(false); renderAll(); }
+    }
     if(target.classList.contains('matrix-input')){
       const tr=target.closest('tr');
       if(!canEditEntity(tr.dataset.section, tr.dataset.entity)){ toast('Нет прав на эту строку'); renderAll(); return; }
@@ -1078,13 +1236,13 @@ function bind(){
       save(false); renderAll();
     }
     if(target.classList.contains('direction-plan')){
-      if(!canEdit('plans')){ toast('Нет прав на планы'); renderAll(); return; }
+      if(!canSeeDirectionPlans() || !canEdit('plans')){ toast('Нет прав на планы'); renderAll(); return; }
       const tr=target.closest('tr'), dir=tr.dataset.planDir, key=target.dataset.key;
       directionPlans()[dir][key]=target.type==='number'?Number(target.value||0):target.value;
       save(false); renderAll();
     }
     if(target.classList.contains('sales-plan')){
-      if(!canEdit('plans')){ toast('Нет прав на планы'); renderAll(); return; }
+      if(!canEditSalesPlans()){ toast('Нет прав на план ОП'); renderAll(); return; }
       const tr=target.closest('tr'), p=salesPlans().find(x=>x.id===tr.dataset.salesPlan), key=target.dataset.key;
       if(p){
         const oldManager = p.manager;
@@ -1097,7 +1255,7 @@ function bind(){
       }
     }
     if(target.classList.contains('finance-plan')){
-      if(!canEdit('plans') || !canSeeExpenses()){ toast('Нет доступа к плану расходов'); renderAll(); return; }
+      if(!canSeeFinancePlans()){ toast('Нет доступа к плану расходов'); renderAll(); return; }
       const tr=target.closest('tr'), p=financePlans().find(x=>x.id===tr.dataset.financePlan), key=target.dataset.key;
       if(p){p[key]=target.type==='number'?Number(target.value||0):target.value; save(false); renderAll();}
     }
@@ -1142,14 +1300,38 @@ function bind(){
       }
     }
     if(target.classList.contains('finance-field')){
-      if(!canEdit('finance') || !canSeeExpenses()){ toast('Нет прав на финансы'); renderAll(); return; }
+      if(!canEdit('finance') || !canAccessFinanceSection()){ toast('Нет прав на финансы'); renderAll(); return; }
       const tr=target.closest('tr'), row=state.financeRows.find(x=>x.id===tr.dataset.finance), key=target.dataset.key;
       if(row){row[key]=target.type==='checkbox'?target.checked:(target.type==='number'?Number(target.value||0):target.value); if(key==='approved')row.status=row.approved?'Одобрено':'На согласовании'; save(false); renderAll();}
     }
   });
   document.addEventListener('click',async e=>{
+    if(e.target.classList.contains('metric-add')){
+      const section = e.target.dataset.section;
+      const label = prompt('Название показателя');
+      if(!label) return;
+      const key = metricKey(label);
+      const metric = {key,label:label.trim(),money:false,rnp:true};
+      if(section==='marketing') marketingMetrics().push(metric);
+      else salesMetrics().push(metric);
+      save(); renderAll();
+    }
+    if(e.target.classList.contains('metric-delete')){
+      const chip = e.target.closest('.metric-chip');
+      const section = chip.dataset.section;
+      const key = chip.dataset.key;
+      if(!confirm('Удалить показатель? Данные по нему тоже пропадут из таблиц.')) return;
+      if(section==='marketing'){
+        state.metricConfig.marketing = marketingMetrics().filter(m=>m.key!==key);
+        Object.values(state.marketing||{}).forEach(byDate=>Object.values(byDate||{}).forEach(row=>delete row[key]));
+      }else{
+        state.metricConfig.sales = salesMetrics().filter(m=>m.key!==key);
+        Object.values(state.sales||{}).forEach(byDate=>Object.values(byDate||{}).forEach(row=>delete row[key]));
+      }
+      save(); renderAll();
+    }
     if(e.target.classList.contains('sales-plan-delete')){
-      if(!canEdit('plans')){toast('Нет прав на планы');return;}
+      if(!canEditSalesPlans()){toast('Нет прав на план ОП');return;}
       const id=e.target.closest('tr').dataset.salesPlan;
       const row=salesPlans().find(x=>x.id===id);
       if(row && confirm('Удалить менеджера из плана и ежедневного ввода продаж?')){
@@ -1158,14 +1340,14 @@ function bind(){
         save();renderAll();
       }
     }
-    if(e.target.classList.contains('finance-plan-delete')){if(!canEdit('plans')){toast('Нет прав на планы');return;} activePlanPack().financePlans=financePlans().filter(x=>x.id!==e.target.closest('tr').dataset.financePlan);save();renderAll();}
-    if(e.target.classList.contains('finance-delete')){if(!canEdit('finance') || !canSeeExpenses()){toast('Нет прав на финансы');return;} state.financeRows=state.financeRows.filter(x=>x.id!==e.target.closest('tr').dataset.finance);save();renderAll();}
+    if(e.target.classList.contains('finance-plan-delete')){if(!canSeeFinancePlans()){toast('Нет доступа к плану расходов');return;} activePlanPack().financePlans=financePlans().filter(x=>x.id!==e.target.closest('tr').dataset.financePlan);save();renderAll();}
+    if(e.target.classList.contains('finance-delete')){if(!canEdit('finance') || !canAccessFinanceSection()){toast('Нет прав на финансы');return;} state.financeRows=state.financeRows.filter(x=>x.id!==e.target.closest('tr').dataset.finance);save();renderAll();}
     if(e.target.classList.contains('doctor-assignment-delete')){if(!canEdit('doctors')){toast('Нет прав на врачей');return;} const id=e.target.closest('tr').dataset.doctorAssignment; state.doctorAssignments=state.doctorAssignments.filter(x=>x.id!==id); delete state.doctors[id]; save();renderAll();}
     if(e.target.classList.contains('user-delete')){if(!canEdit('users')){toast('Нет прав на сотрудников');return;} state.users=state.users.filter(x=>x.id!==e.target.closest('.user-item').dataset.id);save();renderAll();}
     if(e.target.classList.contains('kb-delete')){if(!canEdit('knowledge')){toast('Нет прав на базу знаний');return;} const id=e.target.closest('.kb-item').dataset.id;state.knowledgeDocs=state.knowledgeDocs.filter(x=>x.id!==id);await delFile(id).catch(()=>{});save();renderAll();}
     if(e.target.classList.contains('kb-open')){const id=e.target.closest('.kb-item').dataset.id;const f=await getFile(id).catch(()=>null);if(!f)return alert('В демо сохранены только метаданные. Загрузи реальный файл заново.');const url=URL.createObjectURL(f);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),15000);}
   });
-  document.getElementById('addPayment').addEventListener('click',()=>{if(!canEdit('finance') || !canSeeExpenses()){toast('Нет прав на финансы');return;} state.financeRows.push({id:uid(),date:state.filters.entryDate,initiator:'Рус',category:'Маркетинг',purpose:'',amount:0,status:'На согласовании',approved:false,comment:''});save();renderAll();});
+  document.getElementById('addPayment').addEventListener('click',()=>{if(!canEdit('finance') || !canAccessFinanceSection()){toast('Нет прав на финансы');return;} state.financeRows.push({id:uid(),date:state.filters.entryDate,initiator:'Рус',category:'Маркетинг',purpose:'',amount:0,status:'На согласовании',approved:false,comment:''});save();renderAll();});
   document.getElementById('addUser').addEventListener('click',async()=>{
     if(!canEdit('users')){toast('Нет прав на сотрудников');return;}
     const name=document.getElementById('userName').value.trim(),

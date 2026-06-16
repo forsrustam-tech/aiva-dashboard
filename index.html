@@ -190,7 +190,8 @@
           <h3>Ежедневный ввод</h3>
           <small>Направление + маркетинговый показатель. Колонки — дни выбранного периода.</small>
         </div>
-        <div class="matrix-note">Маркетинг заполняет только маркетинговые показатели: бюджет, показы, клики и лиды. Без ОП и записей.</div>
+        <div class="metric-settings" id="marketingMetricSettings"></div>
+        <div class="matrix-note">Маркетинг заполняет только маркетинговые показатели. Показатели можно добавлять, удалять и переименовывать.</div>
         <div class="matrix-wrap" id="marketingMatrix"></div>
       </article>
       <article class="card mt">
@@ -212,7 +213,8 @@
           <h3>Ежедневный ввод отдела продаж</h3>
           <small>Менеджер + показатель. Дни идут колонками.</small>
         </div>
-        <div class="matrix-note">ОП заполняет лиды, дозвон, записи, продажи чек-апов, продажи диагностик и выручку.</div>
+        <div class="metric-settings" id="salesMetricSettings"></div>
+        <div class="matrix-note">ОП заполняет нужные показатели. Показатели можно добавлять, удалять и переименовывать.</div>
         <div class="matrix-wrap" id="salesMatrix"></div>
       </article>
       <article class="card mt">
@@ -314,7 +316,21 @@
           <div class="form">
             <label>Имя<input id="userName" placeholder="Например: Мадина"></label>
             <label>Email<input id="userEmail" placeholder="name@aiva.kz"></label>
-            <label>Роль<select id="userRole"><option value="owner">owner</option><option value="manager">manager</option><option value="marketing">marketing</option><option value="sales">sales</option><option value="clinic">clinic</option><option value="finance">finance</option><option value="approver">approver</option><option value="viewer">viewer</option></select></label>
+            <label>Роль<select id="userRole">
+              <option value="general_director">Генеральный директор</option>
+              <option value="marketing_director">Директор по маркетингу</option>
+              <option value="sales_head">РОП</option>
+              <option value="center_coordinator">Координатор центра</option>
+              <option value="clinic_director">Директор клиники</option>
+              <option value="sales">Менеджер продаж</option>
+              <option value="marketing">Маркетолог</option>
+              <option value="clinic">Клиника / врачебный блок</option>
+              <option value="finance">Финансы</option>
+              <option value="viewer">Только просмотр</option>
+              <option value="owner">Генеральный директор legacy</option>
+              <option value="approver">Генеральный директор legacy</option>
+              <option value="manager">Управляющий legacy</option>
+            </select></label>
             <label>Доступ к строке / врачу<input id="userAssignedTo" placeholder="Например: Мария или Асем Атыгаева"></label>
             <button type="button" id="addUser" class="btn">Добавить</button>
           </div>
