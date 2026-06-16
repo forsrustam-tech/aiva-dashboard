@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v9_9_site';
+const STORAGE_KEY = 'aiva_dashboard_v10_1_site';
 const CLOUD_STATE_ID = 'main';
 let supabaseClient = null;
 let cloudEnabled = false;
@@ -328,7 +328,7 @@ const roleNames = {
 };
 const roleViews = {
   owner:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
-  manager:['rnp','home','plans','marketing','sales','clinic','doctors','finance','knowledge','users','settings'],
+  manager:['rnp','home','plans','marketing','sales','clinic','doctors','knowledge','users','settings'],
   marketing:['rnp','home','marketing','knowledge','settings'],
   sales:['rnp','home','sales','knowledge','settings'],
   clinic:['rnp','home','clinic','doctors','knowledge','settings'],
@@ -341,9 +341,9 @@ function activeUser(){
     const localUser = state.users?.find(u=>u.id===cloudUser?.id || u.email===cloudUser?.email) || {};
     return {
       id: cloudUser?.id,
-      name: cloudProfile.name || localUser.name || cloudProfile.email || cloudUser?.email || 'Пользователь',
-      email: cloudProfile.email || cloudUser?.email || '',
-      role: cloudProfile.role || localUser.role || 'viewer',
+      name: localUser.name || cloudProfile.name || cloudProfile.email || cloudUser?.email || 'Пользователь',
+      email: localUser.email || cloudProfile.email || cloudUser?.email || '',
+      role: localUser.role || cloudProfile.role || 'viewer',
       assignedTo: localUser.assignedTo || localUser.assigned_to || ''
     };
   }
@@ -414,8 +414,8 @@ function canSeeExpenses(){
   const name = String(user.name || '').toLowerCase();
   const email = String(user.email || '').toLowerCase();
 
-  // План расходов и финансовые расходы видят только Владимир/approver и финансовая роль.
-  return role === 'owner' || role === 'approver' || role === 'finance' || name.includes('владимир') || email.includes('vladimir');
+  // Расходы видят только полный доступ: owner и approver/Владимир.
+  return role === 'owner' || role === 'approver' || name.includes('владимир') || email.includes('vladimir');
 }
 function protectedExpenseMoney(value){
   return canSeeExpenses() ? money(value) : 'Скрыто';
@@ -584,7 +584,7 @@ function renderRnp(){
   const romi=t.marketingBudget?pct(Math.max(profit,0),t.marketingBudget):0;
   document.getElementById('rnpKpis').innerHTML=[
     ['₸','Выручка',money(t.clinicRevenue),'из врачей'],
-    ['◫','Расходы',money(t.expenses),'заявки'],
+    ['◫','Расходы',protectedExpenseMoney(t.expenses),canSeeExpenses() ? 'заявки' : 'скрыто'],
     ['◎','Чистая прибыль',protectedMoney(profit),canSeeProfit() ? 'выручка - расходы' : 'только Владимир'],
     ['◌','Лиды',fmt(t.leads),'маркетинг'],
     ['✦','Записи',fmt(t.salesAppointments),'ОП'],
@@ -768,7 +768,16 @@ function renderKnowledge(){
   document.getElementById('kbList').innerHTML=state.knowledgeDocs.map(d=>`<div class="kb-item" data-id="${d.id}"><div><b>${d.title}</b><div class="kb-meta"><span class="pill">${d.category}</span><span class="pill">${d.fileName}</span></div><div class="muted">${d.description}</div></div><div><button class="secondary kb-open" type="button">Открыть</button> <button class="delete kb-delete" type="button">×</button></div></div>`).join('');
 }
 function renderUsers(){
-  document.getElementById('usersList').innerHTML=state.users.map(u=>`<div class="user-item" data-id="${u.id}"><div><b>${u.name}</b><div class="muted">${u.email}${u.assignedTo ? ' · доступ: '+u.assignedTo : ''}</div></div><span class="badge good">${u.role}</span><button class="delete user-delete" type="button">×</button></div>`).join('');
+  const roles = ['owner','manager','marketing','sales','clinic','finance','approver','viewer'];
+  document.getElementById('usersList').innerHTML=state.users.map(u=>`<div class="user-item user-edit-item" data-id="${u.id}">
+    <div class="form user-edit-form">
+      <label>Имя<input class="user-field" data-key="name" value="${u.name||''}"></label>
+      <label>Email<input class="user-field" data-key="email" value="${u.email||''}"></label>
+      <label>Роль<select class="user-field" data-key="role">${roles.map(r=>`<option value="${r}" ${r===(u.role||'viewer')?'selected':''}>${r}</option>`).join('')}</select></label>
+      <label>Доступ к строке / врачу<input class="user-field" data-key="assignedTo" value="${u.assignedTo||u.assigned_to||''}" placeholder="Мария / Асем Атыгаева"></label>
+    </div>
+    <div><span class="badge good">${u.role||'viewer'}</span> <button class="delete user-delete" type="button">×</button></div>
+  </div>`).join('');
 }
 function renderControls(){
   document.getElementById('monthSelect').value=monthKeyFromDate(tempFilters.start);
@@ -916,11 +925,13 @@ async function loadCloudState(){
     state.currentUserId = cloudUser.id;
 
     if(cloudProfile){
+      const existing = state.users.find(u => u.email === cloudUser.email || u.id === cloudUser.id) || {};
       const userRow = {
         id: cloudUser.id,
-        name: cloudProfile.name || cloudUser.email,
-        email: cloudProfile.email || cloudUser.email,
-        role: cloudProfile.role || 'viewer'
+        name: existing.name || cloudProfile.name || cloudUser.email,
+        email: existing.email || cloudProfile.email || cloudUser.email,
+        role: existing.role || cloudProfile.role || 'viewer',
+        assignedTo: existing.assignedTo || existing.assigned_to || ''
       };
       state.users = state.users.filter(u => u.email !== userRow.email && u.id !== userRow.id);
       state.users.unshift(userRow);
@@ -938,11 +949,13 @@ async function loadCloudState(){
 
   if(cloudProfile){
     const idx = state.users.findIndex(u=>u.id===cloudUser.id || u.email===cloudUser.email);
+    const existing = idx>=0 ? state.users[idx] : {};
     const userRow = {
       id: cloudUser.id,
-      name: cloudProfile.name || cloudUser.email,
-      email: cloudProfile.email || cloudUser.email,
-      role: cloudProfile.role || 'viewer'
+      name: existing.name || cloudProfile.name || cloudUser.email,
+      email: existing.email || cloudProfile.email || cloudUser.email,
+      role: existing.role || cloudProfile.role || 'viewer',
+      assignedTo: existing.assignedTo || existing.assigned_to || ''
     };
     if(idx>=0) state.users[idx]=userRow;
     else state.users.unshift(userRow);
@@ -1108,6 +1121,26 @@ function bind(){
         save(false); renderAll();
       }
     }
+    if(target.classList.contains('user-field')){
+      if(!canEdit('users')){ toast('Нет прав на сотрудников'); renderAll(); return; }
+      const wrap = target.closest('.user-item');
+      const id = wrap?.dataset.id;
+      const row = state.users.find(u=>u.id===id);
+      if(row){
+        row[target.dataset.key] = target.value;
+        if(cloudEnabled && supabaseClient && (target.dataset.key==='role' || target.dataset.key==='name' || target.dataset.key==='email')){
+          supabaseClient.from('profiles').update({
+            name: row.name,
+            email: row.email,
+            role: row.role || 'viewer'
+          }).eq('id', row.id).then(({error})=>{
+            if(error) console.warn('Profile update error:', error);
+          });
+        }
+        save(false);
+        renderAll();
+      }
+    }
     if(target.classList.contains('finance-field')){
       if(!canEdit('finance') || !canSeeExpenses()){ toast('Нет прав на финансы'); renderAll(); return; }
       const tr=target.closest('tr'), row=state.financeRows.find(x=>x.id===tr.dataset.finance), key=target.dataset.key;
@@ -1138,25 +1171,28 @@ function bind(){
     const name=document.getElementById('userName').value.trim(),
       email=document.getElementById('userEmail').value.trim(),
       role=document.getElementById('userRole').value,
-      assignedTo=document.getElementById('userAssignedTo').value.trim();
+      assignedTo=document.getElementById('userAssignedTo')?.value.trim() || '';
     if(!name||!email)return alert('Заполни имя и email');
+
     let id = uid();
     if(cloudEnabled && supabaseClient){
       const { data:profile } = await supabaseClient.from('profiles').select('*').eq('email', email).maybeSingle();
       if(profile?.id){
         id = profile.id;
-        await supabaseClient.from('profiles').update({name, role}).eq('id', profile.id);
+        await supabaseClient.from('profiles').update({name, email, role}).eq('id', profile.id);
       } else {
         alert('Сотрудник сохранится в панели. Чтобы он мог войти на сайт, создай его ещё в Supabase → Authentication → Users с этой же почтой.');
       }
     }
+
     const existingIndex = state.users.findIndex(u=>u.email===email || u.id===id);
     const row = {id,name,email,role,assignedTo};
     if(existingIndex>=0) state.users[existingIndex]=row;
     else state.users.push(row);
+
     document.getElementById('userName').value='';
     document.getElementById('userEmail').value='';
-    document.getElementById('userAssignedTo').value='';
+    if(document.getElementById('userAssignedTo')) document.getElementById('userAssignedTo').value='';
     save();
     renderAll();
   });
