@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v12_clean_safe_site';
+const STORAGE_KEY = 'aiva_dashboard_v12_2_clean_working_site';
 const CLOUD_STATE_ID = 'main';
 const CITY_OPTIONS = [
   {key:'astana', label:'Астана'},
@@ -164,6 +164,8 @@ function isValidDashboardState(s){
   if(!s.marketing || typeof s.marketing !== 'object' || !Object.keys(s.marketing).length) return false;
   if(!s.sales || typeof s.sales !== 'object' || !Object.keys(s.sales).length) return false;
   if(!s.doctors || typeof s.doctors !== 'object' || !Object.keys(s.doctors).length) return false;
+  if(!s.directionPlans || typeof s.directionPlans !== 'object' || !Object.keys(s.directionPlans).length) return false;
+  if(!Array.isArray(s.salesPlans) || !s.salesPlans.length) return false;
   return true;
 }
 function repairDashboardState(s){
@@ -218,6 +220,16 @@ function buildDefault(){
       {id:uid(),date:'2026-06-04',initiator:'Рус',category:'Сервисы',purpose:'AmoCRM',amount:184000,status:'Одобрено',approved:true,comment:'Ежемесячно'},
       {id:uid(),date:'2026-06-10',initiator:'Рус',category:'Маркетинг',purpose:'Доп. бюджет урология',amount:300000,status:'На согласовании',approved:false,comment:'Усилить направление'},
       {id:uid(),date:'2026-06-11',initiator:'Координатор',category:'Клиника',purpose:'Мед. расходники',amount:360000,status:'Одобрено',approved:true,comment:'Владимир подтвердил'}
+    ],
+    revenueRows:[
+      {id:uid(), name:'Оплаты диагностик ОП', dates:{}},
+      {id:uid(), name:'Сумма доплат диагностик в центре', dates:{}},
+      {id:uid(), name:'Сумма оплат анализы', dates:{}},
+      {id:uid(), name:'Сумма оплат УЗИ', dates:{}},
+      {id:uid(), name:'Сумма оплат разовые процедуры', dates:{}},
+      {id:uid(), name:'Сумма предоплат', dates:{}},
+      {id:uid(), name:'Сумма доплат пакетов', dates:{}},
+      {id:uid(), name:'Оплаты основного лечения', dates:{}}
     ],
     users:[
       {id:uid(),name:'Рус Шарифуллин',email:'forsrustam@gmail.com',role:'owner'},
@@ -304,6 +316,20 @@ function buildDefault(){
       financePlans: clone(data.financePlans)
     }
   };
+  const revenueSeed = {
+    'Оплаты диагностик ОП':[0,316000,591900,0,0,0,0,0,0],
+    'Сумма доплат диагностик в центре':[0,631000,484100,0,0,0,0,0,0],
+    'Сумма оплат анализы':[0,301700,497400,0,0,0,0,0,0],
+    'Сумма оплат УЗИ':[0,2000,60000,0,0,0,0,0,0],
+    'Сумма оплат разовые процедуры':[0,188000,332850,0,0,0,0,0,0],
+    'Сумма предоплат':[0,20000,30000,0,0,0,0,0,0],
+    'Сумма доплат пакетов':[0,606100,2004675,0,0,0,0,0,0],
+    'Оплаты основного лечения':[0,1926400,4884625,0,0,0,0,0,0]
+  };
+  data.revenueRows.forEach(row=>{
+    days.forEach((date,i)=>{ row.dates[date] = Number((revenueSeed[row.name]||[])[i]||0); });
+  });
+
   return data;
 }
 
@@ -344,6 +370,7 @@ function migrateState(s){
   if(!s.doctors || !Object.keys(s.doctors).length) s.doctors = clone(fresh.doctors);
   normalizeDoctorsState(s);
   if(!s.financeRows || !Array.isArray(s.financeRows)) s.financeRows = clone(fresh.financeRows);
+  if(!s.revenueRows || !Array.isArray(s.revenueRows) || !s.revenueRows.length) s.revenueRows = clone(fresh.revenueRows);
   if(!s.knowledgeDocs || !Array.isArray(s.knowledgeDocs)) s.knowledgeDocs = clone(fresh.knowledgeDocs);
 
   if(!s.users || !s.users.length) s.users = clone(fresh.users);
@@ -466,8 +493,8 @@ const roleViews = {
   owner:['rnp','home','plans','marketing','sales','clinic','doctors','revenue','finance','knowledge','users','settings'],
   approver:['rnp','home','plans','marketing','sales','clinic','doctors','revenue','finance','knowledge','users','settings'],
 
-  marketing_director:['rnp','home','plans','marketing','sales','clinic','doctors','revenue','knowledge','users','settings'],
-  manager:['rnp','home','plans','marketing','sales','clinic','doctors','revenue','knowledge','users','settings'],
+  marketing_director:['rnp','home','plans','marketing','sales','clinic','doctors','knowledge','users','settings'],
+  manager:['rnp','home','plans','marketing','sales','clinic','doctors','knowledge','users','settings'],
 
   sales_head:['rnp','home','plans','sales','knowledge','settings'],
   center_coordinator:['rnp','home','clinic','doctors','revenue','finance','knowledge','settings'],
@@ -500,7 +527,7 @@ function canEdit(area){
   const role = activeUser().role || 'viewer';
 
   if(['general_director','owner','approver'].includes(role)) return true;
-  if(area==='revenue') return ['marketing_director','manager','center_coordinator'].includes(role);
+  if(area==='revenue') return ['center_coordinator'].includes(role);
   if(['marketing_director','manager'].includes(role)) return !['finance','financePlans'].includes(area);
   if(role==='sales_head') return area==='sales' || area==='salesPlans';
   if(role==='center_coordinator') return area==='doctors' || area==='clinic' || area==='finance';
@@ -1239,7 +1266,7 @@ async function loadCloudState(){
     return;
   }
 
-  state = data.data;
+  state = repairDashboardState(data.data || buildDefault());
   migrateState(state);
   state.currentUserId = cloudUser.id;
 
