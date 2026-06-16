@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v11_2_site';
+const STORAGE_KEY = 'aiva_dashboard_v11_3_safe_site';
 const CLOUD_STATE_ID = 'main';
 let supabaseClient = null;
 let cloudEnabled = false;
@@ -56,6 +56,14 @@ function defaultMarketingMetrics(){
     {key:'leads', label:'Лиды', rnp:true}
   ];
 }
+function defaultOwners(){
+  return {
+    marketing:'РОМ',
+    sales:'РОП',
+    clinic:'Координатор',
+    finance:'Владимир'
+  };
+}
 function defaultSalesMetrics(){
   return [
     {key:'leads', label:'Лиды', rnp:true},
@@ -66,21 +74,6 @@ function defaultSalesMetrics(){
     {key:'revenue', label:'Выручка', money:true, rnp:false}
   ];
 }
-function defaultSalesGeneralMetrics(){
-  return [
-    {key:'amo_requests', label:'Заявки AMO CRM', rnp:true},
-    {key:'unqualified', label:'Неквалы', rnp:true}
-  ];
-}
-function defaultOwners(){
-  return {
-    marketing:'РОМ',
-    sales:'РОП',
-    clinic:'Координатор',
-    finance:'Владимир'
-  };
-}
-
 function marketingMetrics(){
   if(!state.metricConfig) state.metricConfig = {};
   if(!state.metricConfig.marketing) state.metricConfig.marketing = defaultMarketingMetrics();
@@ -91,17 +84,11 @@ function salesMetrics(){
   if(!state.metricConfig.sales) state.metricConfig.sales = defaultSalesMetrics();
   return state.metricConfig.sales;
 }
-function salesGeneralMetrics(){
-  if(!state.metricConfig) state.metricConfig = {};
-  if(!state.metricConfig.salesGeneral) state.metricConfig.salesGeneral = defaultSalesGeneralMetrics();
-  return state.metricConfig.salesGeneral;
-}
-
 function metricKey(label){
   const base = slug(label || 'metric') || 'metric';
   let key = base;
   let i = 2;
-  const used = new Set([...marketingMetrics(), ...salesMetrics(), ...salesGeneralMetrics(), ...dMetrics].map(m=>m.key));
+  const used = new Set([...marketingMetrics(), ...salesMetrics(), ...dMetrics].map(m=>m.key));
   while(used.has(key)) key = base + '_' + i++;
   return key;
 }
@@ -130,8 +117,7 @@ function currentMonthKey(){ return monthKeyFromDate(state?.filters?.start || tod
 function buildDefault(){
   const data = {
     filters:{start:monthStart(monthKeyFromDate(todayIso())),end:monthEnd(monthKeyFromDate(todayIso())),entryDate:todayIso(),direction:'Все направления'},
-    metricConfig:{marketing:defaultMarketingMetrics(),sales:defaultSalesMetrics(),salesGeneral:defaultSalesGeneralMetrics()},
-    owners:defaultOwners(),
+    metricConfig:{marketing:defaultMarketingMetrics(),sales:defaultSalesMetrics()},
     directionPlans:{
       'Урология':{marketingBudget:1800000,impressions:260000,clicks:5200,leads:650,came:180,clinicSales:95,revenue:11000000,comment:'Основной фокус'},
       'Терапия':{marketingBudget:1600000,impressions:235000,clicks:4700,leads:600,came:175,clinicSales:90,revenue:9000000,comment:'Стабильное направление'},
@@ -153,7 +139,6 @@ function buildDefault(){
     ],
     marketing:{},
     sales:{},
-    salesGeneral:{'ОП общий':{}},
     doctors:{},
     financeRows:[
       {id:uid(),date:'2026-06-01',initiator:'Рус',category:'Маркетинг',purpose:'Meta Ads',amount:420000,status:'Одобрено',approved:true,comment:'Маркетинг'},
@@ -273,16 +258,14 @@ function migrateState(s){
   if(!s.filters.direction) s.filters.direction = 'Все направления';
 
   if(!s.metricConfig) s.metricConfig = {};
+  if(!s.owners) s.owners = defaultOwners();
   if(!s.metricConfig.marketing || !Array.isArray(s.metricConfig.marketing) || !s.metricConfig.marketing.length) s.metricConfig.marketing = defaultMarketingMetrics();
   if(!s.metricConfig.sales || !Array.isArray(s.metricConfig.sales) || !s.metricConfig.sales.length) s.metricConfig.sales = defaultSalesMetrics();
-  if(!s.metricConfig.salesGeneral || !Array.isArray(s.metricConfig.salesGeneral) || !s.metricConfig.salesGeneral.length) s.metricConfig.salesGeneral = defaultSalesGeneralMetrics();
-  if(!s.owners) s.owners = defaultOwners();
   if(!s.directionPlans || !Object.keys(s.directionPlans).length) s.directionPlans = clone(fresh.directionPlans);
   if(!s.salesPlans || !s.salesPlans.length) s.salesPlans = clone(fresh.salesPlans);
   if(!s.financePlans || !s.financePlans.length) s.financePlans = clone(fresh.financePlans);
 
   if(!s.marketing || !Object.keys(s.marketing).length) s.marketing = clone(fresh.marketing);
-  if(!s.salesGeneral || !Object.keys(s.salesGeneral).length) s.salesGeneral = clone(fresh.salesGeneral || {'ОП общий':{}});
   if(!s.sales || !Object.keys(s.sales).length) s.sales = clone(fresh.sales);
   if(!s.doctors || !Object.keys(s.doctors).length) s.doctors = clone(fresh.doctors);
   normalizeDoctorsState(s);
@@ -465,12 +448,12 @@ function activeAssignedTo(){
 function entityAllowedForUser(section, entity){
   const role = activeUser().role || 'viewer';
   if(['general_director','owner','approver','marketing_director','manager'].includes(role)) return true;
-  if(role==='sales_head' && (section==='sales' || section==='salesGeneral')) return true;
+  if(role==='sales_head' && section==='sales') return true;
   if(['center_coordinator','clinic_director','finance'].includes(role) && section==='finance') return true;
   if(role==='center_coordinator' && (section==='doctors' || section==='clinic')) return true;
 
   const assigned = activeAssignedTo();
-  if((section === 'sales' || section === 'salesGeneral') && role === 'sales'){
+  if(section === 'sales' && role === 'sales'){
     return normName(entity) === assigned || normName(entity).includes(assigned) || assigned.includes(normName(entity));
   }
   if(section === 'doctors' && role === 'clinic'){
@@ -541,14 +524,8 @@ function setValue(section,entity,date,metric,value){
     ? Object.fromEntries(marketingMetrics().map(m=>[m.key,0]))
     : section==='sales'
       ? Object.fromEntries(salesMetrics().map(m=>[m.key,0]))
-      : section==='salesGeneral'
-        ? Object.fromEntries(salesGeneralMetrics().map(m=>[m.key,0]))
-        : {appointments:0,sales:0,upsells:0,revenue:0};
-  if(section==='salesGeneral'){
-    if(!state.salesGeneral[entity]) state.salesGeneral[entity]={};
-    if(!state.salesGeneral[entity][date]) state.salesGeneral[entity][date]={...defaults};
-    state.salesGeneral[entity][date][metric]=value;
-  } else if(section==='doctors'){
+      : {appointments:0,sales:0,upsells:0,revenue:0};
+  if(section==='doctors'){
     const assignment = state.doctorAssignments?.find(a=>a.id===entity);
     if(!state.doctors[entity]) state.doctors[entity]={name:assignment?.name || entity,direction:assignment?.direction || '',dates:{}};
     if(!state.doctors[entity].dates[date]) state.doctors[entity].dates[date]={...defaults};
@@ -627,33 +604,6 @@ function marketingSummary(){
       planPct:p.marketingBudget?pct(s.budget,p.marketingBudget):0
     };
   });
-}
-function salesGeneralSummary(){
-  const s=sumObj('salesGeneral',['ОП общий'],salesGeneralMetrics());
-  return s;
-}
-function salesConversions(){
-  const ss = salesSummary();
-  const sg = salesGeneralSummary();
-  const leads = ss.reduce((a,b)=>a+Number(b.leads||0),0);
-  const calls = ss.reduce((a,b)=>a+Number(b.calls||0),0);
-  const appointments = ss.reduce((a,b)=>a+Number(b.appointments||0),0);
-  const checkups = ss.reduce((a,b)=>a+Number(b.checkups||0),0);
-  const diagnostics = ss.reduce((a,b)=>a+Number(b.diagnostics||0),0);
-  const sales = checkups + diagnostics;
-  const amo = Number(sg.amo_requests || 0);
-  return {
-    sales,
-    leads,
-    calls,
-    appointments,
-    amo,
-    callToSale:pct(sales,calls),
-    dialToSale:pct(sales,calls),
-    leadToSale:pct(sales,leads),
-    amoToSale:pct(sales,amo),
-    appointmentToSale:pct(sales,appointments)
-  };
 }
 function salesSummary(){
   syncSalesWithPlans();
@@ -737,33 +687,6 @@ function dynamicMetricRows(){
     ]);
   });
 
-  salesGeneralMetrics().filter(m=>m.rnp).forEach(m=>{
-    const fact = Number(salesGeneralSummary()[m.key]||0);
-    rows.push([
-      'ОП ' + m.label.toLowerCase(),
-      m.money ? money(0) : fmt(0),
-      m.money ? money(fact) : fmt(fact),
-      0,
-      state.owners?.sales || state.owners?.sales || 'РОП',
-      'Продажи'
-    ]);
-  });
-
-  const conv = salesConversions();
-  [
-    ['Конв. звонок → продажа',conv.callToSale],
-    ['Конв. дозвон → продажа',conv.dialToSale],
-    ['Общая конверсия ОП',conv.leadToSale],
-    ['Конв. AMO → продажа',conv.amoToSale]
-  ].forEach(([label,value])=>rows.push([
-    label,
-    '—',
-    value+'%',
-    value,
-    state.owners?.sales || 'РОП',
-    'Продажи'
-  ]));
-
   salesMetrics().filter(m=>m.rnp).forEach(m=>{
     const fact = salesSummary().reduce((a,b)=>a+Number(b[m.key]||0),0);
     let planKey = m.key + 'Plan';
@@ -846,12 +769,6 @@ function renderHome(){
   ].map(x=>`<div><b>${x[0]}</b><small>${x[1]}</small></div>`).join('');
 }
 function renderPlans(){
-  if(!state.owners) state.owners = defaultOwners();
-  document.getElementById('ownerMarketing').value = state.owners.marketing || '';
-  document.getElementById('ownerSales').value = state.owners.sales || '';
-  document.getElementById('ownerClinic').value = state.owners.clinic || '';
-  document.getElementById('ownerFinance').value = state.owners.finance || '';
-
   document.getElementById('plansKpis').innerHTML=[
     ['◎','План маркетинга',canSeeDirectionPlans()?money(directionPlanTotal('marketingBudget')):'Скрыто',canSeeDirectionPlans()?fmt(directionPlanTotal('leads'))+' лидов':'скрыто'],
     ['↗','План ОП',canSeeSalesPlans()?fmt(salesPlanTotal('checkupsPlan')+salesPlanTotal('diagnosticsPlan')):'Скрыто',canSeeSalesPlans()?'чек-апы + диагностики':'скрыто'],
@@ -907,10 +824,10 @@ function renderPlans(){
   }
 }
 function renderMetricSettings(section){
-  const box = document.getElementById(section === 'marketing' ? 'marketingMetricSettings' : section === 'salesGeneral' ? 'salesGeneralMetricSettings' : 'salesMetricSettings');
+  const box = document.getElementById(section === 'marketing' ? 'marketingMetricSettings' : 'salesMetricSettings');
   if(!box) return;
-  const metrics = section === 'marketing' ? marketingMetrics() : section === 'salesGeneral' ? salesGeneralMetrics() : salesMetrics();
-  const canEditMetrics = section === 'marketing' ? canEdit('marketing') || canEdit('plans') : section === 'salesGeneral' ? canEditSalesPlans?.() || canEdit('sales') : canEditSalesPlans?.() || canEdit('sales');
+  const metrics = section === 'marketing' ? marketingMetrics() : salesMetrics();
+  const canEditMetrics = section === 'marketing' ? canEdit('marketing') || canEdit('plans') : canEditSalesPlans?.() || canEdit('sales');
   box.innerHTML = metrics.map(m=>`<div class="metric-chip" data-section="${section}" data-key="${m.key}">
     <input class="metric-label" type="text" value="${m.label}" ${canEditMetrics?'':'disabled'}>
     <label><input class="metric-money" type="checkbox" ${m.money?'checked':''} ${canEditMetrics?'':'disabled'}> ₸</label>
@@ -936,8 +853,6 @@ function renderMarketing(){
   document.getElementById('marketingSummary').innerHTML=s.map(x=>`<tr><td>${x.direction}</td><td>${money(x.planBudget)}</td><td>${money(x.budget)}</td><td>${fmt(x.impressions)}</td><td>${fmt(x.clicks)}</td><td>${fmt(x.leads)}</td><td>${x.cpl?money(x.cpl):'—'}</td><td>${x.ctr}%</td><td>${x.cpc?money(x.cpc):'—'}</td><td>${x.planPct}%</td></tr>`).join('');
 }
 function renderSales(){
-  renderMetricSettings('salesGeneral');
-  document.getElementById('salesGeneralMatrix').innerHTML=matrixHtml('salesGeneral',['ОП общий'],salesGeneralMetrics(),{header:'Отдел',name:x=>x});
   renderMetricSettings('sales');
   syncSalesWithPlans();
   document.getElementById('salesMatrix').innerHTML=matrixHtml('sales',salesPlanManagers(),salesMetrics(),{header:'Менеджер',name:x=>x});
@@ -1305,13 +1220,6 @@ function bind(){
 
   document.addEventListener('change',e=>{
     const target=e.target;
-    if(target.id==='ownerMarketing' || target.id==='ownerSales' || target.id==='ownerClinic' || target.id==='ownerFinance'){
-      if(!canEdit('plans')){ toast('Нет прав менять ответственных'); renderAll(); return; }
-      if(!state.owners) state.owners=defaultOwners();
-      const key = target.id.replace('owner','').toLowerCase();
-      state.owners[key]=target.value;
-      save(false); renderAll();
-    }
     if(target.classList.contains('metric-label')){
       const chip = target.closest('.metric-chip');
       const list = chip.dataset.section === 'marketing' ? marketingMetrics() : salesMetrics();
@@ -1414,7 +1322,6 @@ function bind(){
       const key = metricKey(label);
       const metric = {key,label:label.trim(),money:false,rnp:true};
       if(section==='marketing') marketingMetrics().push(metric);
-      else if(section==='salesGeneral') salesGeneralMetrics().push(metric);
       else salesMetrics().push(metric);
       save(); renderAll();
     }
@@ -1426,9 +1333,6 @@ function bind(){
       if(section==='marketing'){
         state.metricConfig.marketing = marketingMetrics().filter(m=>m.key!==key);
         Object.values(state.marketing||{}).forEach(byDate=>Object.values(byDate||{}).forEach(row=>delete row[key]));
-      }else if(section==='salesGeneral'){
-        state.metricConfig.salesGeneral = salesGeneralMetrics().filter(m=>m.key!==key);
-        Object.values(state.salesGeneral||{}).forEach(byDate=>Object.values(byDate||{}).forEach(row=>delete row[key]));
       }else{
         state.metricConfig.sales = salesMetrics().filter(m=>m.key!==key);
         Object.values(state.sales||{}).forEach(byDate=>Object.values(byDate||{}).forEach(row=>delete row[key]));
