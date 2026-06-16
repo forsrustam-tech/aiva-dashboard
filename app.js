@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v9_8_site';
+const STORAGE_KEY = 'aiva_dashboard_v9_9_site';
 const CLOUD_STATE_ID = 'main';
 let supabaseClient = null;
 let cloudEnabled = false;
@@ -454,6 +454,39 @@ function directionPlanTotal(key){
   return Object.entries(directionPlans()).filter(([dir])=>isDirectionVisible(dir)).reduce((a,[,p])=>a+Number(p[key]||0),0);
 }
 function salesPlanTotal(key){ return salesPlans().reduce((a,p)=>a+Number(p[key]||0),0); }
+function activeManagers(){
+  const fromPlan = salesPlans().map(p=>p.manager).filter(Boolean);
+  const fromSales = Object.keys(state.sales || {});
+  return [...new Set([...fromPlan, ...fromSales])].filter(name => salesPlans().some(p=>p.manager===name) || fromSales.includes(name));
+}
+function salesPlanManagers(){
+  return salesPlans().map(p=>p.manager).filter(Boolean);
+}
+function syncSalesWithPlans(){
+  if(!state.sales) state.sales = {};
+  salesPlanManagers().forEach(name=>{
+    if(!state.sales[name]) state.sales[name] = {};
+  });
+}
+function renameSalesManager(oldName, newName){
+  oldName = String(oldName||'').trim();
+  newName = String(newName||'').trim();
+  if(!newName || oldName === newName) return;
+  if(state.sales?.[oldName]){
+    if(!state.sales[newName]) state.sales[newName] = state.sales[oldName];
+    else {
+      Object.entries(state.sales[oldName]).forEach(([date,row])=>{
+        if(!state.sales[newName][date]) state.sales[newName][date] = row;
+        else Object.assign(state.sales[newName][date], row);
+      });
+    }
+    delete state.sales[oldName];
+  }
+}
+function removeSalesManagerData(name){
+  delete state.sales[name];
+}
+
 function financePlanTotal(){ return financePlans().reduce((a,p)=>a+Number(p.amountPlan||0),0); }
 
 function marketingSummary(){
@@ -480,7 +513,8 @@ function marketingSummary(){
   });
 }
 function salesSummary(){
-  return managers.map(m=>{
+  syncSalesWithPlans();
+  return salesPlanManagers().map(m=>{
     const s=sumObj('sales',[m],sMetrics), p=salesPlans().find(x=>x.manager===m)||{};
     const totalSales = Number(s.checkups||0)+Number(s.diagnostics||0);
     return {manager:m,...s,totalSales,rate:pct(s.appointments,s.leads),planAppointments:p.appointmentsPlan||0,planCheckups:p.checkupsPlan||0,planDiagnostics:p.diagnosticsPlan||0,planRevenue:p.revenuePlan||0};
@@ -671,7 +705,8 @@ function renderMarketing(){
   document.getElementById('marketingSummary').innerHTML=s.map(x=>`<tr><td>${x.direction}</td><td>${money(x.planBudget)}</td><td>${money(x.budget)}</td><td>${fmt(x.impressions)}</td><td>${fmt(x.clicks)}</td><td>${fmt(x.leads)}</td><td>${x.cpl?money(x.cpl):'—'}</td><td>${x.ctr}%</td><td>${x.cpc?money(x.cpc):'—'}</td><td>${x.planPct}%</td></tr>`).join('');
 }
 function renderSales(){
-  document.getElementById('salesMatrix').innerHTML=matrixHtml('sales',managers,sMetrics,{header:'Менеджер',name:x=>x});
+  syncSalesWithPlans();
+  document.getElementById('salesMatrix').innerHTML=matrixHtml('sales',salesPlanManagers(),sMetrics,{header:'Менеджер',name:x=>x});
   const s=salesSummary();
   const leads=s.reduce((a,b)=>a+b.leads,0), calls=s.reduce((a,b)=>a+b.calls,0), app=s.reduce((a,b)=>a+b.appointments,0), checkups=s.reduce((a,b)=>a+b.checkups,0), diagnostics=s.reduce((a,b)=>a+b.diagnostics,0);
   document.getElementById('salesKpis').innerHTML=[
@@ -992,7 +1027,12 @@ function bind(){
   });
   document.getElementById('addSalesPlanRow').addEventListener('click',()=>{
     if(!canEdit('plans')){toast('Нет прав на планы');return;}
-    salesPlans().push({id:uid(),manager:'Новый менеджер',leadsPlan:0,callsPlan:0,appointmentsPlan:0,checkupsPlan:0,diagnosticsPlan:0,revenuePlan:0,comment:''});
+    let baseName = 'Новый менеджер';
+    let name = baseName;
+    let i = 2;
+    while(salesPlans().some(p=>p.manager===name)){ name = baseName + ' ' + i++; }
+    salesPlans().push({id:uid(),manager:name,leadsPlan:0,callsPlan:0,appointmentsPlan:0,checkupsPlan:0,diagnosticsPlan:0,revenuePlan:0,comment:''});
+    if(!state.sales[name]) state.sales[name] = {};
     save(); renderAll();
   });
   document.getElementById('addFinancePlanRow').addEventListener('click',()=>{
@@ -1033,7 +1073,15 @@ function bind(){
     if(target.classList.contains('sales-plan')){
       if(!canEdit('plans')){ toast('Нет прав на планы'); renderAll(); return; }
       const tr=target.closest('tr'), p=salesPlans().find(x=>x.id===tr.dataset.salesPlan), key=target.dataset.key;
-      if(p){p[key]=target.type==='number'?Number(target.value||0):target.value; save(false); renderAll();}
+      if(p){
+        const oldManager = p.manager;
+        p[key]=target.type==='number'?Number(target.value||0):target.value;
+        if(key==='manager'){
+          renameSalesManager(oldManager, p.manager);
+        }
+        syncSalesWithPlans();
+        save(false); renderAll();
+      }
     }
     if(target.classList.contains('finance-plan')){
       if(!canEdit('plans') || !canSeeExpenses()){ toast('Нет доступа к плану расходов'); renderAll(); return; }
@@ -1067,7 +1115,16 @@ function bind(){
     }
   });
   document.addEventListener('click',async e=>{
-    if(e.target.classList.contains('sales-plan-delete')){if(!canEdit('plans')){toast('Нет прав на планы');return;} activePlanPack().salesPlans=salesPlans().filter(x=>x.id!==e.target.closest('tr').dataset.salesPlan);save();renderAll();}
+    if(e.target.classList.contains('sales-plan-delete')){
+      if(!canEdit('plans')){toast('Нет прав на планы');return;}
+      const id=e.target.closest('tr').dataset.salesPlan;
+      const row=salesPlans().find(x=>x.id===id);
+      if(row && confirm('Удалить менеджера из плана и ежедневного ввода продаж?')){
+        removeSalesManagerData(row.manager);
+        activePlanPack().salesPlans=salesPlans().filter(x=>x.id!==id);
+        save();renderAll();
+      }
+    }
     if(e.target.classList.contains('finance-plan-delete')){if(!canEdit('plans')){toast('Нет прав на планы');return;} activePlanPack().financePlans=financePlans().filter(x=>x.id!==e.target.closest('tr').dataset.financePlan);save();renderAll();}
     if(e.target.classList.contains('finance-delete')){if(!canEdit('finance') || !canSeeExpenses()){toast('Нет прав на финансы');return;} state.financeRows=state.financeRows.filter(x=>x.id!==e.target.closest('tr').dataset.finance);save();renderAll();}
     if(e.target.classList.contains('doctor-assignment-delete')){if(!canEdit('doctors')){toast('Нет прав на врачей');return;} const id=e.target.closest('tr').dataset.doctorAssignment; state.doctorAssignments=state.doctorAssignments.filter(x=>x.id!==id); delete state.doctors[id]; save();renderAll();}
