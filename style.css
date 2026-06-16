@@ -514,13 +514,6 @@ textarea{resize:vertical}
   font-weight:900;
 }
 
-/* v11.9 safe revenue section */
-#revenueMatrix .matrix input.revenue-name{
-  min-width:260px;
-  text-align:left;
-  font-weight:900;
-}
-#revenueMatrix .total-row td{
-  background:#f3faf7;
-  font-weight:900;
-}
+/* v12 clean-safe revenue */
+#revenueMatrix .matrix input.revenue-name{min-width:260px;text-align:left;font-weight:900}
+#revenueMatrix .total-row td{background:#f3faf7;font-weight:900}

@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v11_9_revenue_safe_site';
+const STORAGE_KEY = 'aiva_dashboard_v12_clean_safe_site';
 const CLOUD_STATE_ID = 'main';
 const CITY_OPTIONS = [
   {key:'astana', label:'Астана'},
@@ -157,6 +157,21 @@ function uid(){ return 'id-' + Math.random().toString(36).slice(2,10); }
 function slug(s){ return String(s||'').trim().toLowerCase().replace(/[^а-яa-z0-9]+/gi,'-').replace(/^-|-$/g,''); }
 function doctorKey(name, direction){ return slug(name) + '__' + slug(direction); }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
+function isValidDashboardState(s){
+  if(!s || typeof s !== 'object' || Array.isArray(s)) return false;
+  if(!s.filters || typeof s.filters !== 'object') return false;
+  if(!s.filters.start || !s.filters.end || !s.filters.entryDate) return false;
+  if(!s.marketing || typeof s.marketing !== 'object' || !Object.keys(s.marketing).length) return false;
+  if(!s.sales || typeof s.sales !== 'object' || !Object.keys(s.sales).length) return false;
+  if(!s.doctors || typeof s.doctors !== 'object' || !Object.keys(s.doctors).length) return false;
+  return true;
+}
+function repairDashboardState(s){
+  const fresh = buildDefault();
+  if(!isValidDashboardState(s)) return fresh;
+  return s;
+}
+
 function todayIso(){ return new Date().toISOString().slice(0,10); }
 function monthKeyFromDate(date){ return String(date || todayIso()).slice(0,7); }
 function monthStart(key){ return key + '-01'; }
@@ -298,31 +313,14 @@ let tempFilters = {...state.filters};
 function load(){
   let loaded = null;
   try{ const raw=localStorage.getItem(cityStorageKey()); if(raw) loaded = JSON.parse(raw); }catch(e){}
-  const base = loaded || buildDefault();
+  const base = repairDashboardState(loaded || buildDefault());
   migrateState(base);
   return base;
 }
-function safeArray(v){ return Array.isArray(v) ? v : []; }
-function safeObject(v){ return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
-
 function migrateState(s){
   const fresh = buildDefault();
 
   if(!s || typeof s !== 'object') s = fresh;
-
-  // v11.8: защита от пустого/частично сохранённого состояния города.
-  // Если Supabase вернул {}, main_astana/main_almaty или битую структуру — достраиваем все разделы.
-  s.marketing = safeObject(s.marketing);
-  s.sales = safeObject(s.sales);
-  s.doctors = safeObject(s.doctors);
-  s.financeRows = safeArray(s.financeRows);
-  s.revenueRows = safeArray(s.revenueRows);
-  s.users = safeArray(s.users);
-  s.knowledgeDocs = safeArray(s.knowledgeDocs);
-  s.planMonths = safeObject(s.planMonths);
-  s.directionPlans = safeObject(s.directionPlans);
-  s.salesPlans = safeArray(s.salesPlans);
-  s.financePlans = safeArray(s.financePlans);
 
   s.city=currentCity; s.cityName=cityLabel();
   if(!s.filters) s.filters = fresh.filters;
@@ -345,8 +343,7 @@ function migrateState(s){
   if(!s.sales || !Object.keys(s.sales).length) s.sales = clone(fresh.sales);
   if(!s.doctors || !Object.keys(s.doctors).length) s.doctors = clone(fresh.doctors);
   normalizeDoctorsState(s);
-  if(!s.financeRows || !Array.isArray(s.financeRows) || !s.financeRows.length) s.financeRows = clone(fresh.financeRows);
-  if(!s.revenueRows || !Array.isArray(s.revenueRows) || !s.revenueRows.length) s.revenueRows = clone(fresh.revenueRows);
+  if(!s.financeRows || !Array.isArray(s.financeRows)) s.financeRows = clone(fresh.financeRows);
   if(!s.knowledgeDocs || !Array.isArray(s.knowledgeDocs)) s.knowledgeDocs = clone(fresh.knowledgeDocs);
 
   if(!s.users || !s.users.length) s.users = clone(fresh.users);
@@ -1095,10 +1092,7 @@ function renderAll(){
   const renders = [renderControls, renderRnp, renderHome, renderPlans, renderMarketing, renderSales, renderClinic, renderDoctors];
   if(typeof renderRevenue === 'function') renders.push(renderRevenue);
   renders.push(renderFinance, renderKnowledge, renderUsers);
-  renders.forEach(fn=>{
-    try{ fn(); }
-    catch(e){ console.error('Render block failed:', fn.name, e); }
-  });
+  renders.forEach(fn=>{ try{ fn(); }catch(e){ console.error('Render block failed:', fn.name, e); } });
 }
 function applyRoleUi(){
   document.querySelectorAll('.nav-btn').forEach(btn=>{

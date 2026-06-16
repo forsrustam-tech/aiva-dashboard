@@ -1,0 +1,16 @@
+-- AIVA Dashboard v12: reset broken city states
+-- Запусти в Supabase SQL Editor, если экран пустой/битый.
+-- Это сбросит сохранённые данные по двум городам и дашборд заново создаст рабочую структуру.
+
+update public.dashboard_state
+set data = '{}'::jsonb,
+    updated_at = now()
+where id in ('main_astana','main_almaty');
+
+insert into public.dashboard_state (id, data)
+values
+  ('main_astana', '{}'::jsonb),
+  ('main_almaty', '{}'::jsonb)
+on conflict (id) do update
+set data = '{}'::jsonb,
+    updated_at = now();
