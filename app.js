@@ -1,5 +1,13 @@
-const STORAGE_KEY = 'aiva_dashboard_v11_3_safe_site';
+const STORAGE_KEY = 'aiva_dashboard_v11_6_cities_revenue_site';
 const CLOUD_STATE_ID = 'main';
+const CITY_OPTIONS = [
+  {key:'astana', label:'Астана'},
+  {key:'almaty', label:'Алматы'}
+];
+let currentCity = localStorage.getItem('aiva_current_city') || 'astana';
+function cityLabel(key=currentCity){ return CITY_OPTIONS.find(c=>c.key===key)?.label || 'Астана'; }
+function cityStorageKey(){ return STORAGE_KEY + '_' + currentCity; }
+function cityCloudStateId(){ return 'main_' + currentCity; }
 let supabaseClient = null;
 let cloudEnabled = false;
 let cloudUser = null;
@@ -47,6 +55,52 @@ const dMetrics = [
   {key:'upsells', label:'Доплаты'},
   {key:'revenue', label:'Выручка', money:true}
 ];
+
+function defaultDoctorMetrics(){
+  return [
+    {key:'appointments', label:'Приёмы'},
+    {key:'sales', label:'Продажи'},
+    {key:'upsells', label:'Доплаты'},
+    {key:'revenue', label:'Выручка', money:true}
+  ];
+}
+function defaultPlanMetrics(){
+  return [
+    {key:'marketingBudget', label:'Маркетинг бюджет', money:true, source:'marketing', factKey:'budget', responsible:'РОМ'},
+    {key:'impressions', label:'Показы', source:'marketing', factKey:'impressions', responsible:'РОМ'},
+    {key:'clicks', label:'Клики', source:'marketing', factKey:'clicks', responsible:'РОМ'},
+    {key:'leads', label:'Лиды', source:'marketing', factKey:'leads', responsible:'РОМ'},
+    {key:'came', label:'Дошедшие', source:'clinic', factKey:'appointments', responsible:'Координатор'},
+    {key:'clinicSales', label:'Продажи клиники', source:'clinic', factKey:'sales', responsible:'Координатор'},
+    {key:'revenue', label:'Выручка', money:true, source:'clinic', factKey:'revenue', responsible:'Координатор'}
+  ];
+}
+function ensureConfigs(){
+  if(!state.metricConfig) state.metricConfig = {};
+  if(!state.metricConfig.doctors || !Array.isArray(state.metricConfig.doctors) || !state.metricConfig.doctors.length) state.metricConfig.doctors = defaultDoctorMetrics();
+  if(!state.metricConfig.planDirections || !Array.isArray(state.metricConfig.planDirections) || !state.metricConfig.planDirections.length) state.metricConfig.planDirections = defaultPlanMetrics();
+}
+function doctorMetrics(){
+  ensureConfigs();
+  return state.metricConfig.doctors;
+}
+function planMetrics(){
+  ensureConfigs();
+  return state.metricConfig.planDirections;
+}
+function slug(s){ return String(s||'').trim().toLowerCase().replace(/[^а-яa-z0-9]+/gi,'-').replace(/^-|-$/g,''); }
+function uniqueMetricKey(label, list){
+  const base = slug(label || 'metric') || 'metric';
+  let key = base;
+  let i = 2;
+  const used = new Set(list.map(m=>m.key));
+  while(used.has(key)) key = base + '_' + i++;
+  return key;
+}
+function metricDefaultRow(metrics){
+  return Object.fromEntries(metrics.map(m=>[m.key,0]));
+}
+
 
 function defaultMarketingMetrics(){
   return [
@@ -116,6 +170,8 @@ function currentMonthKey(){ return monthKeyFromDate(state?.filters?.start || tod
 
 function buildDefault(){
   const data = {
+    city:currentCity,
+    cityName:cityLabel(),
     filters:{start:monthStart(monthKeyFromDate(todayIso())),end:monthEnd(monthKeyFromDate(todayIso())),entryDate:todayIso(),direction:'Все направления'},
     metricConfig:{marketing:defaultMarketingMetrics(),sales:defaultSalesMetrics()},
     directionPlans:{
@@ -241,7 +297,7 @@ let tempFilters = {...state.filters};
 
 function load(){
   let loaded = null;
-  try{ const raw=localStorage.getItem(STORAGE_KEY); if(raw) loaded = JSON.parse(raw); }catch(e){}
+  try{ const raw=localStorage.getItem(cityStorageKey()); if(raw) loaded = JSON.parse(raw); }catch(e){}
   const base = loaded || buildDefault();
   migrateState(base);
   return base;
@@ -251,6 +307,7 @@ function migrateState(s){
 
   if(!s || typeof s !== 'object') s = fresh;
 
+  s.city=currentCity; s.cityName=cityLabel();
   if(!s.filters) s.filters = fresh.filters;
   if(!s.filters.start) s.filters.start = monthStart(monthKeyFromDate(todayIso()));
   if(!s.filters.end) s.filters.end = monthEnd(monthKeyFromDate(s.filters.start));
@@ -258,6 +315,8 @@ function migrateState(s){
   if(!s.filters.direction) s.filters.direction = 'Все направления';
 
   if(!s.metricConfig) s.metricConfig = {};
+  if(!s.metricConfig.doctors || !Array.isArray(s.metricConfig.doctors) || !s.metricConfig.doctors.length) s.metricConfig.doctors = defaultDoctorMetrics();
+  if(!s.metricConfig.planDirections || !Array.isArray(s.metricConfig.planDirections) || !s.metricConfig.planDirections.length) s.metricConfig.planDirections = defaultPlanMetrics();
   if(!s.owners) s.owners = defaultOwners();
   if(!s.metricConfig.marketing || !Array.isArray(s.metricConfig.marketing) || !s.metricConfig.marketing.length) s.metricConfig.marketing = defaultMarketingMetrics();
   if(!s.metricConfig.sales || !Array.isArray(s.metricConfig.sales) || !s.metricConfig.sales.length) s.metricConfig.sales = defaultSalesMetrics();
@@ -332,7 +391,7 @@ function directionPlans(){ return activePlanPack().directionPlans; }
 function salesPlans(){ return activePlanPack().salesPlans; }
 function financePlans(){ return activePlanPack().financePlans; }
 function save(show=true){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(cityStorageKey(), JSON.stringify(state));
   if(cloudEnabled && cloudUser){
     queueCloudSave();
   }
@@ -350,7 +409,7 @@ async function saveCloudState(){
     const { error } = await supabaseClient
       .from('dashboard_state')
       .upsert({
-        id:CLOUD_STATE_ID,
+        id:cityCloudStateId(),
         data:payload,
         updated_by:cloudUser.id,
         updated_at:new Date().toISOString()
@@ -524,7 +583,7 @@ function setValue(section,entity,date,metric,value){
     ? Object.fromEntries(marketingMetrics().map(m=>[m.key,0]))
     : section==='sales'
       ? Object.fromEntries(salesMetrics().map(m=>[m.key,0]))
-      : {appointments:0,sales:0,upsells:0,revenue:0};
+      : section==='doctors' ? metricDefaultRow(doctorMetrics()) : {appointments:0,sales:0,upsells:0,revenue:0};
   if(section==='doctors'){
     const assignment = state.doctorAssignments?.find(a=>a.id===entity);
     if(!state.doctors[entity]) state.doctors[entity]={name:assignment?.name || entity,direction:assignment?.direction || '',dates:{}};
@@ -617,7 +676,7 @@ function doctorSummary(){
   const keys=Object.keys(state.doctors || {}).filter(key=>isDirectionVisible(state.doctors[key].direction));
   return keys.map(key=>{
     const doc = state.doctors[key];
-    const s=sumObj('doctors',[key],dMetrics);
+    const s=sumObj('doctors',[key],doctorMetrics());
     return {key,name:doc.name || key,direction:doc.direction,...s,conversion:pct(s.sales,s.appointments)};
   }).sort((a,b)=>b.revenue-a.revenue);
 }
@@ -650,6 +709,7 @@ function totals(){
     clinicSales:cs.reduce((a,b)=>a+b.sales,0),
     upsells:cs.reduce((a,b)=>a+b.upsells,0),
     clinicRevenue:cs.reduce((a,b)=>a+b.revenue,0),
+    totalRevenue:ss.reduce((a,b)=>a+b.revenue,0) + cs.reduce((a,b)=>a+b.revenue,0),
     expenses:fs.reduce((a,b)=>a+Number(b.amount||0),0),
     approvedCount:fs.filter(x=>x.approved).length,
     financeCount:fs.length
@@ -711,10 +771,10 @@ function dynamicMetricRows(){
 }
 function renderRnp(){
   const t=totals();
-  const profit=t.clinicRevenue-t.expenses;
+  const profit=t.totalRevenue-t.expenses;
   const romi=t.marketingBudget?pct(Math.max(profit,0),t.marketingBudget):0;
   document.getElementById('rnpKpis').innerHTML=[
-    ['₸','Выручка',money(t.clinicRevenue),'из врачей'],
+    ['₸','Выручка',money(t.totalRevenue),'ОП + клиника'],
     ['◫','Расходы',protectedExpenseMoney(t.expenses),canSeeExpenses() ? 'заявки' : 'скрыто'],
     ['◎','Чистая прибыль',protectedMoney(profit),canSeeProfit() ? 'выручка - расходы' : 'только Владимир'],
     ['◌','Лиды',fmt(t.leads),'маркетинг'],
@@ -727,7 +787,9 @@ function renderRnp(){
   const rows=[
     ...dynamicMetricRows(),
     ['Клиника продажи',fmt(directionPlanTotal('clinicSales')),fmt(t.clinicSales),pct(t.clinicSales,directionPlanTotal('clinicSales')),state.owners?.clinic || 'Координатор','Врачи'],
+    ['ОП выручка',money(salesPlanTotal('revenuePlan')),money(t.opRevenue),pct(t.opRevenue,salesPlanTotal('revenuePlan')),state.owners?.sales || 'РОП','Продажи'],
     ['Клиника выручка',money(directionPlanTotal('revenue')),money(t.clinicRevenue),pct(t.clinicRevenue,directionPlanTotal('revenue')),state.owners?.clinic || 'Координатор','Врачи'],
+    ['Итого выручка',money(salesPlanTotal('revenuePlan') + directionPlanTotal('revenue')),money(t.totalRevenue),pct(t.totalRevenue,salesPlanTotal('revenuePlan') + directionPlanTotal('revenue')),state.owners?.finance || 'Ген. директор','ОП + клиника'],
     ['Финансы расходы',protectedExpenseMoney(financePlanTotal()),protectedExpenseMoney(t.expenses),canSeeExpenses()?pct(t.expenses,financePlanTotal()):0,state.owners?.finance || 'Владимир','Финансы']
   ];
   document.getElementById('rnpTable').innerHTML=rows.map(r=>{const s=status(r[3]);return `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${(r[1]==='Скрыто'||r[2]==='Скрыто')?'Скрыто':r[3]+'%'}</td><td>${r[4]}</td><td class="source">${r[5]}</td><td><span class="badge ${s[0]}">${(r[1]==='Скрыто'||r[2]==='Скрыто')?'Скрыто':s[1]}</span></td></tr>`}).join('');
@@ -763,7 +825,7 @@ function renderFinanceDonut(){
 function renderHome(){
   const t=totals();
   document.getElementById('homeStats').innerHTML=[
-    [`${pct(t.clinicRevenue,directionPlanTotal('revenue'))}%`,'Выполнение выручки'],
+    [`${pct(t.totalRevenue,salesPlanTotal('revenuePlan') + directionPlanTotal('revenue'))}%`,'Выполнение общей выручки'],
     [`${fmt(t.checkups)}/${fmt(t.diagnostics)}`,'Чек-апы / диагностики'],
     [fmt(state.users.length),'Пользователей']
   ].map(x=>`<div><b>${x[0]}</b><small>${x[1]}</small></div>`).join('');
@@ -779,7 +841,10 @@ function renderPlans(){
   const directionPlanCard = document.getElementById('directionPlansTable')?.closest('.card');
   if(directionPlanCard) directionPlanCard.style.display = canSeeDirectionPlans() ? '' : 'none';
   if(canSeeDirectionPlans()){
-    document.querySelector('#directionPlansTable tbody').innerHTML=customDirectionsPure().map(dir=>{
+    renderMetricEditor('planMetricSettings', planMetrics(), 'plans');
+  const directionHead = document.querySelector('#directionPlansTable thead tr');
+  if(directionHead) directionHead.innerHTML = '<th>Направление</th>' + planMetrics().map(m=>`<th>${m.label}</th>`).join('') + '<th>Комментарий</th>';
+  document.querySelector('#directionPlansTable tbody').innerHTML=customDirectionsPure().map(dir=>{
       if(!directionPlans()[dir]) directionPlans()[dir] = {marketingBudget:0,impressions:0,clicks:0,leads:0,came:0,clinicSales:0,revenue:0,comment:''};
       const p=directionPlans()[dir];
       return `<tr data-plan-dir="${dir}">
@@ -877,7 +942,21 @@ function renderClinic(){
   document.getElementById('clinicAutoTable').innerHTML=clinicAutoSummary().map(x=>`<tr><td>${x.direction}</td><td>${fmt(x.planSales)}</td><td>${fmt(x.sales)}</td><td>${money(x.planRevenue)}</td><td>${money(x.revenue)}</td><td>${fmt(x.appointments)}</td><td>${fmt(x.upsells)}</td><td>${x.planPct}%</td></tr>`).join('');
   renderClinicSalesAnalytics('clinicBars');
 }
+function renderMetricEditor(containerId, list, section){
+  const box = document.getElementById(containerId);
+  if(!box) return;
+  const can = section === 'doctors' ? canEdit('doctors') : canEdit('plans');
+  box.innerHTML = list.map(m=>`<div class="metric-chip" data-section="${section}" data-key="${m.key}">
+    <input class="config-metric-label" type="text" value="${m.label}" ${can?'':'disabled'}>
+    <label><input class="config-metric-money" type="checkbox" ${m.money?'checked':''} ${can?'':'disabled'}> ₸</label>
+    ${section==='plans'?`<label title="Источник факта">Источник <select class="config-metric-source" ${can?'':'disabled'}>
+      ${['marketing','clinic','none'].map(s=>`<option value="${s}" ${s===(m.source||'none')?'selected':''}>${s}</option>`).join('')}
+    </select></label>`:''}
+    ${can?'<button type="button" class="delete config-metric-delete">×</button>':''}
+  </div>`).join('') + (can ? `<button type="button" class="metric-add" data-section="${section}">+ Показатель</button>` : '');
+}
 function renderDoctors(){
+  renderMetricEditor('doctorMetricSettings', doctorMetrics(), 'doctors');
   normalizeDoctorsState(state);
   const assignments = state.doctorAssignments.filter(a=>isDirectionVisible(a.direction));
   const keys = assignments.map(a=>a.id);
@@ -887,7 +966,7 @@ function renderDoctors(){
     <td><input class="doctor-assignment" data-key="comment" value="${a.comment||''}" placeholder="Например: печень / похудение"></td>
     <td><button class="delete doctor-assignment-delete" type="button">×</button></td>
   </tr>`).join('');
-  document.getElementById('doctorsMatrix').innerHTML=matrixHtml('doctors',keys,dMetrics,{header:'Врач / направление',name:key=>{
+  document.getElementById('doctorsMatrix').innerHTML=matrixHtml('doctors',keys,doctorMetrics(),{header:'Врач / направление',name:key=>{
     const d=state.doctors[key] || {};
     return `<span class="assignment-name"><b>${d.name || key}</b><small>${d.direction || ''}</small></span>`;
   }});
@@ -929,6 +1008,11 @@ function renderUsers(){
   </div>`).join('');
 }
 function renderControls(){
+  const citySelect = document.getElementById('citySelect');
+  if(citySelect) citySelect.value=currentCity;
+  document.querySelectorAll('.title-block small').forEach(el=>{
+    if(el.textContent.includes('AIVA CLINIC')) el.textContent = 'AIVA CLINIC · ' + cityLabel().toUpperCase() + ' · УПРАВЛЕНЧЕСКИЙ КОНТУР';
+  });
   document.getElementById('monthSelect').value=monthKeyFromDate(tempFilters.start);
   document.getElementById('startDate').value=tempFilters.start;
   document.getElementById('endDate').value=tempFilters.end;
@@ -1059,7 +1143,7 @@ async function loadCloudState(){
   const { data, error } = await supabaseClient
     .from('dashboard_state')
     .select('data')
-    .eq('id', CLOUD_STATE_ID)
+    .eq('id', cityCloudStateId())
     .maybeSingle();
 
   if(error){
@@ -1087,7 +1171,7 @@ async function loadCloudState(){
     }
 
     migrateState(state);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(cityStorageKey(), JSON.stringify(state));
     await saveCloudState();
     return;
   }
@@ -1110,7 +1194,7 @@ async function loadCloudState(){
     else state.users.unshift(userRow);
   }
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(cityStorageKey(), JSON.stringify(state));
   await saveCloudState();
 }
 function currentAreaByView(){
@@ -1133,10 +1217,28 @@ function toggleMobileMenu(force){
   document.body.classList.toggle('menu-open', shouldOpen);
 }
 
+async function switchCity(newCity){
+  if(!newCity || newCity===currentCity) return;
+  await saveCloudState();
+  localStorage.setItem(cityStorageKey(), JSON.stringify(state));
+  currentCity = newCity;
+  localStorage.setItem('aiva_current_city', currentCity);
+  state = load();
+  tempFilters = {...state.filters};
+  if(cloudEnabled && cloudUser){
+    await loadCloudState();
+    tempFilters = {...state.filters};
+  }
+  renderAll();
+  showView('rnp');
+  toast('Открыт город: ' + cityLabel());
+}
+
 function bind(){
   document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
   document.getElementById('mobileMenuBtn')?.addEventListener('click',()=>toggleMobileMenu());
   document.getElementById('sidebarBackdrop')?.addEventListener('click',()=>toggleMobileMenu(false));
+  document.getElementById('citySelect')?.addEventListener('change',e=>switchCity(e.target.value));
   document.getElementById('monthSelect').addEventListener('change',e=>{
     const key=e.target.value;
     tempFilters.start=monthStart(key);
@@ -1238,6 +1340,23 @@ function bind(){
       const metric = list.find(m=>m.key===chip.dataset.key);
       if(metric){ metric.rnp=target.checked; save(false); renderAll(); }
     }
+    if(target.classList.contains('config-metric-label')){
+      const chip = target.closest('.metric-chip');
+      const list = chip.dataset.section==='doctors' ? doctorMetrics() : planMetrics();
+      const m = list.find(x=>x.key===chip.dataset.key);
+      if(m){ m.label=target.value; save(false); renderAll(); }
+    }
+    if(target.classList.contains('config-metric-money')){
+      const chip = target.closest('.metric-chip');
+      const list = chip.dataset.section==='doctors' ? doctorMetrics() : planMetrics();
+      const m = list.find(x=>x.key===chip.dataset.key);
+      if(m){ m.money=target.checked; save(false); renderAll(); }
+    }
+    if(target.classList.contains('config-metric-source')){
+      const chip = target.closest('.metric-chip');
+      const m = planMetrics().find(x=>x.key===chip.dataset.key);
+      if(m){ m.source=target.value; save(false); renderAll(); }
+    }
     if(target.classList.contains('matrix-input')){
       const tr=target.closest('tr');
       if(!canEditEntity(tr.dataset.section, tr.dataset.entity)){ toast('Нет прав на эту строку'); renderAll(); return; }
@@ -1336,6 +1455,37 @@ function bind(){
       }else{
         state.metricConfig.sales = salesMetrics().filter(m=>m.key!==key);
         Object.values(state.sales||{}).forEach(byDate=>Object.values(byDate||{}).forEach(row=>delete row[key]));
+      }
+      save(); renderAll();
+    }
+    if(e.target.classList.contains('metric-add')){
+      const section=e.target.dataset.section;
+      const label=prompt('Название показателя');
+      if(!label) return;
+      if(section==='doctors'){
+        const key=uniqueMetricKey(label,doctorMetrics());
+        doctorMetrics().push({key,label:label.trim(),money:false});
+      }else if(section==='plans'){
+        const key=uniqueMetricKey(label,planMetrics());
+        planMetrics().push({key,label:label.trim(),money:false,source:'none',responsible:''});
+        customDirectionsPure().forEach(dir=>{
+          if(!directionPlans()[dir]) directionPlans()[dir]={comment:''};
+          if(directionPlans()[dir][key]===undefined) directionPlans()[dir][key]=0;
+        });
+      }
+      save(); renderAll();
+    }
+    if(e.target.classList.contains('config-metric-delete')){
+      const chip=e.target.closest('.metric-chip');
+      const section=chip.dataset.section;
+      const key=chip.dataset.key;
+      if(!confirm('Удалить показатель?')) return;
+      if(section==='doctors'){
+        state.metricConfig.doctors=doctorMetrics().filter(m=>m.key!==key);
+        Object.values(state.doctors||{}).forEach(doc=>Object.values(doc.dates||{}).forEach(row=>delete row[key]));
+      }else if(section==='plans'){
+        state.metricConfig.planDirections=planMetrics().filter(m=>m.key!==key);
+        Object.values(directionPlans()||{}).forEach(row=>delete row[key]);
       }
       save(); renderAll();
     }

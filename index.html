@@ -67,6 +67,10 @@
         <h2 id="pageTitle">РНП — сводный экран</h2>
       </div>
       <div class="controls">
+        <label><span>Город</span><select id="citySelect">
+          <option value="astana">Астана</option>
+          <option value="almaty">Алматы</option>
+        </select></label>
         <label><span>Месяц</span><input id="monthSelect" type="month"></label>
         <button type="button" id="applyMonth" class="btn ghost">Открыть месяц</button>
         <label><span>С</span><input id="startDate" type="date"></label>
@@ -156,7 +160,8 @@
       <div class="kpis small" id="plansKpis"></div>
 
       <article class="card">
-        <div class="card-head"><h3>Планы по направлениям</h3><div><small>От этих цифр потом считается РНП</small> <button type="button" id="addDirectionPlan" class="secondary">+ Направление</button></div></div>
+        <div class="card-head"><h3>Планы по направлениям</h3><div><small>От этих цифр потом считается РНП</small> <button type="button" id="addPlanColumn" class="secondary">+ Столбец</button> <button type="button" id="addDirectionPlan" class="secondary">+ Направление</button></div></div>
+        <div class="metric-settings" id="planMetricSettings"></div>
         <div class="table-wrap"><table class="clean-table editable" id="directionPlansTable">
           <thead><tr><th>Направление</th><th>Маркетинг бюджет</th><th>Показы</th><th>Клики</th><th>Лиды</th><th>Дошедшие</th><th>Продажи клиники</th><th>Выручка</th><th>Комментарий</th></tr></thead>
           <tbody></tbody>
@@ -258,7 +263,8 @@
       </article>
       <article class="card mt">
         <div class="card-head"><h3>Таблица врачей</h3><small>Эти данные автоматически уходят в клинику и РНП</small></div>
-        <div class="matrix-note">Координатор заполняет врачей. Отдельную таблицу клиники больше руками дублировать не нужно.</div>
+        <div class="metric-settings" id="doctorMetricSettings"></div>
+        <div class="matrix-note">Координатор заполняет врачей. Показатели можно добавлять, удалять и переименовывать.</div>
         <div class="matrix-wrap" id="doctorsMatrix"></div>
       </article>
       <article class="card mt">
