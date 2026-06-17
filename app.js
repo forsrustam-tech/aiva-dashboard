@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v13_working_revenue_site';
+const STORAGE_KEY = 'aiva_dashboard_v13_1_force_heal_site';
 const CLOUD_STATE_ID = 'main';
 const CITY_OPTIONS = [
   {key:'astana', label:'Астана'},
@@ -1224,6 +1224,17 @@ async function loadCloudProfile(){
   }
   state.currentUserId = cloudUser.id;
 }
+async function forceSaveRepairedState(){
+  try{
+    if(cloudEnabled && supabaseClient && cloudUser){
+      await saveCloudState();
+    }
+  }catch(e){
+    console.warn('Force repair save failed', e);
+  }
+}
+
+
 async function loadCloudState(){
   if(!supabaseClient || !cloudUser) return;
   const { data, error } = await supabaseClient
