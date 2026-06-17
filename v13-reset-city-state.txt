@@ -1,0 +1,14 @@
+-- AIVA Dashboard v13: сброс битого состояния городов
+-- Supabase → SQL Editor → New query → Run
+-- Очищает сохранённый сломанный state. После этого сайт сам создаст рабочую структуру с таблицей выручки.
+
+delete from public.dashboard_state
+where id in ('main_astana', 'main_almaty');
+
+insert into public.dashboard_state (id, data)
+values
+  ('main_astana', '{}'::jsonb),
+  ('main_almaty', '{}'::jsonb)
+on conflict (id) do update
+set data = '{}'::jsonb,
+    updated_at = now();

@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aiva_dashboard_v12_2_clean_working_site';
+const STORAGE_KEY = 'aiva_dashboard_v13_working_revenue_site';
 const CLOUD_STATE_ID = 'main';
 const CITY_OPTIONS = [
   {key:'astana', label:'Астана'},
@@ -308,14 +308,6 @@ function buildDefault(){
   dr('Элона Потапова','2026-06-11',5,3,1,725000);
   dr('Асем Атыгаева','2026-06-11',5,2,1,690000);
 
-  data.currentUserId = data.users[0].id;
-  data.planMonths = {
-    [monthKeyFromDate(data.filters.start)]: {
-      directionPlans: clone(data.directionPlans),
-      salesPlans: clone(data.salesPlans),
-      financePlans: clone(data.financePlans)
-    }
-  };
   const revenueSeed = {
     'Оплаты диагностик ОП':[0,316000,591900,0,0,0,0,0,0],
     'Сумма доплат диагностик в центре':[0,631000,484100,0,0,0,0,0,0],
@@ -330,6 +322,14 @@ function buildDefault(){
     days.forEach((date,i)=>{ row.dates[date] = Number((revenueSeed[row.name]||[])[i]||0); });
   });
 
+  data.currentUserId = data.users[0].id;
+  data.planMonths = {
+    [monthKeyFromDate(data.filters.start)]: {
+      directionPlans: clone(data.directionPlans),
+      salesPlans: clone(data.salesPlans),
+      financePlans: clone(data.financePlans)
+    }
+  };
   return data;
 }
 
@@ -735,9 +735,7 @@ function clinicAutoSummary(){
     return {...fact,planSales:plan.clinicSales||0,planRevenue:plan.revenue||0,planCame:plan.came||0,planPct:plan.revenue?pct(fact.revenue,plan.revenue):0};
   });
 }
-function revenueRows(){
-  return Array.isArray(state.revenueRows) ? state.revenueRows : [];
-}
+function revenueRows(){ return Array.isArray(state.revenueRows) ? state.revenueRows : []; }
 function revenueTotal(){
   const dates = datesInRange();
   return revenueRows().reduce((sum,row)=>sum+dates.reduce((a,d)=>a+Number(row.dates?.[d]||0),0),0);
@@ -1116,9 +1114,7 @@ function renderControls(){
   applyRoleUi();
 }
 function renderAll(){
-  const renders = [renderControls, renderRnp, renderHome, renderPlans, renderMarketing, renderSales, renderClinic, renderDoctors];
-  if(typeof renderRevenue === 'function') renders.push(renderRevenue);
-  renders.push(renderFinance, renderKnowledge, renderUsers);
+  const renders = [renderControls, renderRnp, renderHome, renderPlans, renderMarketing, renderSales, renderClinic, renderDoctors, renderRevenue, renderFinance, renderKnowledge, renderUsers];
   renders.forEach(fn=>{ try{ fn(); }catch(e){ console.error('Render block failed:', fn.name, e); } });
 }
 function applyRoleUi(){
