@@ -1,0 +1,9 @@
+{
+  "node_check": true,
+  "has_revenue_section": true,
+  "has_city_select": true,
+  "uses_new_supabase_keys": true,
+  "has_revenue_rows": true,
+  "has_roles": true,
+  "has_schema": true
+}
